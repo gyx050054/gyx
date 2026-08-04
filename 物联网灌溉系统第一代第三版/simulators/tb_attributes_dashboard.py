@@ -105,16 +105,20 @@ def build_dashboard(devices, field_assets):
         alias_ids[kind] = uid
         return uid
 
-    # ---- 实体别名 ----
+    # ---- 实体别名（用 entityList 显式列出，避免 filter 字段差异匹配不到）----
+    field_ids = [a["id"] for a in field_assets]
+    sensor_ids = [d["id"] for d in devices if d["type"] == "TEMPERATURE_HUMIDITY"]
+    valve_ids = [d["id"] for d in devices if d["type"] == "VALVE"]
     entity_aliases = {
         alias_id("fields"): {"alias": "全部田块",
-                             "filter": {"type": "entityType", "entityType": "ASSET", "assetType": "FIELD"}},
+                             "filter": {"type": "entityList", "entityType": "ASSET",
+                                        "entityList": field_ids}},
         alias_id("sensors"): {"alias": "全部温湿度计",
-                              "filter": {"type": "entityType", "entityType": "DEVICE",
-                                         "deviceType": "TEMPERATURE_HUMIDITY"}},
+                              "filter": {"type": "entityList", "entityType": "DEVICE",
+                                         "entityList": sensor_ids}},
         alias_id("valves"): {"alias": "全部电动阀",
-                             "filter": {"type": "entityType", "entityType": "DEVICE",
-                                        "deviceType": "VALVE"}},
+                             "filter": {"type": "entityList", "entityType": "DEVICE",
+                                        "entityList": valve_ids}},
     }
 
     def find_dev(name):
@@ -141,13 +145,15 @@ def build_dashboard(devices, field_assets):
         return [{"type": "entity", "name": alias_ids[alias_kind], "entityAliasId": alias_ids[alias_kind],
                  "dataKeys": keys}]
 
-    def widget(wid, wtype_ref, title, ds, size_x, size_y, row, col, timewindow=None):
+    def widget(wid, type_full_fqn, wtype, title, ds, size_x, size_y, row, col, timewindow=None):
         cfg = {"datasources": ds, "settings": {}, "title": title, "showTitle": True,
                "showTitleIcon": False, "showTitleButtons": True,
+               "backgroundColor": "rgba(0, 0, 0, 0)", "color": "rgba(0, 0, 0, 0.87)",
+               "padding": "8px",
                "timewindow": timewindow or {"realtime": {"timewindowMs": 60000}}}
-        return {"id": wid, "type": wtype_ref["widgetType"], "title": title,
+        return {"id": wid, "typeFullFqn": type_full_fqn, "type": wtype, "title": title,
                 "sizeX": size_x, "sizeY": size_y, "row": row, "col": col,
-                "config": cfg, "widgetType": wtype_ref}
+                "config": cfg}
 
     widgets = {}
 
@@ -155,23 +161,20 @@ def build_dashboard(devices, field_assets):
         widgets[w["id"]] = w
 
     # w1 田块总览表
-    add(widget(str(uuid.uuid4()),
-               {"name": "Entities table", "fqn": "cards.entities_table", "widgetType": "latest"},
+    add(widget(str(uuid.uuid4()), "system.cards.entities_table", "latest",
                "田块总览（设备数量）",
                datasource("fields", [key("fieldName", "田块", "#2196f3", "attribute"),
                                      key("deviceCount", "设备数", "#4caf50", "attribute")]),
                12, 7, 0, 0))
     # w2 温湿度实时表
-    add(widget(str(uuid.uuid4()),
-               {"name": "Entities table", "fqn": "cards.entities_table", "widgetType": "latest"},
+    add(widget(str(uuid.uuid4()), "system.cards.entities_table", "latest",
                "温湿度计实时数据",
                datasource("sensors", [key("temperature", "温度(℃)", "#f44336"),
                                       key("humidity", "湿度(%RH)", "#2196f3"),
                                       key("ts", "时间", "#9e9e9e")]),
                12, 7, 0, 12))
     # w3 电动阀状态表
-    add(widget(str(uuid.uuid4()),
-               {"name": "Entities table", "fqn": "cards.entities_table", "widgetType": "latest"},
+    add(widget(str(uuid.uuid4()), "system.cards.entities_table", "latest",
                "电动阀状态",
                datasource("valves", [key("valveState", "状态", "#ff9800"),
                                      key("instantFlow", "瞬时流量(L/min)", "#4caf50"),
@@ -182,9 +185,7 @@ def build_dashboard(devices, field_assets):
                12, 7, 7, 0))
     # w4 温湿度历史曲线
     if s1:
-        add(widget(str(uuid.uuid4()),
-                   {"name": "Timeseries Line Chart", "fqn": "charts.basic_timeseries",
-                    "widgetType": "timeseries"},
+        add(widget(str(uuid.uuid4()), "system.charts.basic_timeseries", "timeseries",
                    "温湿度历史曲线（田地1-温湿度计）",
                    datasource("sensor1", [key("temperature", "温度", "#f44336"),
                                           key("humidity", "湿度", "#2196f3")]),
@@ -192,9 +193,7 @@ def build_dashboard(devices, field_assets):
                    {"realtime": {"timewindowMs": 3600000}}))
     # w5 阀门流量曲线
     if v1:
-        add(widget(str(uuid.uuid4()),
-                   {"name": "Timeseries Line Chart", "fqn": "charts.basic_timeseries",
-                    "widgetType": "timeseries"},
+        add(widget(str(uuid.uuid4()), "system.charts.basic_timeseries", "timeseries",
                    "阀门流量曲线（田地1-灌溉阀门A）",
                    datasource("valve1", [key("instantFlow", "瞬时流量", "#4caf50"),
                                          key("waterPressure", "水压", "#9c27b0")]),
