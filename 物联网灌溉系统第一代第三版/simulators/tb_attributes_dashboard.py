@@ -145,8 +145,8 @@ def build_dashboard(devices, field_assets):
         return [{"type": "entity", "name": alias_ids[alias_kind], "entityAliasId": alias_ids[alias_kind],
                  "dataKeys": keys}]
 
-    def widget(wid, type_full_fqn, wtype, title, ds, size_x, size_y, row, col, timewindow=None):
-        cfg = {"datasources": ds, "settings": {}, "title": title, "showTitle": True,
+    def widget(wid, type_full_fqn, wtype, title, ds, size_x, size_y, row, col, timewindow=None, wsettings=None):
+        cfg = {"datasources": ds, "settings": wsettings or {}, "title": title, "showTitle": True,
                "showTitleIcon": False, "showTitleButtons": True,
                "backgroundColor": "rgba(0, 0, 0, 0)", "color": "rgba(0, 0, 0, 0.87)",
                "padding": "8px",
@@ -165,38 +165,38 @@ def build_dashboard(devices, field_assets):
                "田块总览（设备数量）",
                datasource("fields", [key("fieldName", "田块", "#2196f3", "attribute"),
                                      key("deviceCount", "设备数", "#4caf50", "attribute")]),
-               12, 7, 0, 0))
-    # w2 温湿度实时表
+               12, 7, 0, 0, wsettings={"rowsPerPage": 100}))
+    # w2 温湿度实时表（全部 9 台）
     add(widget(str(uuid.uuid4()), "system.cards.entities_table", "latest",
-               "温湿度计实时数据",
+               "温湿度计实时数据（全部 9 台）",
                datasource("sensors", [key("temperature", "温度(℃)", "#f44336"),
                                       key("humidity", "湿度(%RH)", "#2196f3"),
                                       key("ts", "时间", "#9e9e9e")]),
-               12, 7, 0, 12))
-    # w3 电动阀状态表
+               12, 7, 0, 12, wsettings={"rowsPerPage": 100}))
+    # w3 电动阀状态表（全部 18 台）
     add(widget(str(uuid.uuid4()), "system.cards.entities_table", "latest",
-               "电动阀状态",
+               "电动阀状态（全部 18 台）",
                datasource("valves", [key("valveState", "状态", "#ff9800"),
                                      key("instantFlow", "瞬时流量(L/min)", "#4caf50"),
                                      key("totalWaterUsage", "累计用水(m³)", "#2196f3"),
                                      key("waterPressure", "水压(MPa)", "#9c27b0"),
                                      key("batteryLevel", "电量(%)", "#ff5722"),
                                      key("faultStatus", "故障", "#f44336")]),
-               12, 7, 7, 0))
-    # w4 温湿度历史曲线
-    if s1:
+               12, 7, 7, 0, wsettings={"rowsPerPage": 100}))
+    # w4 温湿度历史曲线（全部 9 台温湿度计）
+    if sensor_ids:
         add(widget(str(uuid.uuid4()), "system.charts.basic_timeseries", "timeseries",
-                   "温湿度历史曲线（田地1-温湿度计）",
-                   datasource("sensor1", [key("temperature", "温度", "#f44336"),
-                                          key("humidity", "湿度", "#2196f3")]),
+                   "温湿度历史曲线（全部温湿度计）",
+                   datasource("sensors", [key("temperature", "温度", "#f44336"),
+                                           key("humidity", "湿度", "#2196f3")]),
                    12, 7, 7, 12,
                    {"realtime": {"timewindowMs": 3600000}}))
-    # w5 阀门流量曲线
-    if v1:
+    # w5 阀门流量曲线（全部 18 台电动阀）
+    if valve_ids:
         add(widget(str(uuid.uuid4()), "system.charts.basic_timeseries", "timeseries",
-                   "阀门流量曲线（田地1-灌溉阀门A）",
-                   datasource("valve1", [key("instantFlow", "瞬时流量", "#4caf50"),
-                                         key("waterPressure", "水压", "#9c27b0")]),
+                   "阀门流量曲线（全部电动阀）",
+                   datasource("valves", [key("instantFlow", "瞬时流量", "#4caf50"),
+                                          key("waterPressure", "水压", "#9c27b0")]),
                    12, 7, 14, 0,
                    {"realtime": {"timewindowMs": 3600000}}))
 
@@ -223,8 +223,8 @@ def build_dashboard(devices, field_assets):
         "filters": {},
         "timewindow": {"realtime": {"timewindowMs": 60000}},
         "settings": {"stateControllerId": "0", "showTitle": False,
-                     "showDashboardsSelection": True, "showEntitiesSelection": True,
-                     "showFilters": True, "showTimewindow": True, "showWidgetsSelection": True}
+                     "showDashboardsSelection": False, "showEntitiesSelection": False,
+                     "showFilters": False, "showTimewindow": True, "showWidgetsSelection": False}
     }
     return configuration
 
