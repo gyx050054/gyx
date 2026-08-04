@@ -201,6 +201,7 @@ def build_dashboard(devices, field_assets):
                    {"realtime": {"timewindowMs": 3600000}}))
 
     configuration = {
+        "description": "智能灌溉总览",
         "entityAliases": entity_aliases,
         "widgets": widgets,
         "states": {
@@ -208,15 +209,19 @@ def build_dashboard(devices, field_assets):
                 "name": "Default", "root": True,
                 "layouts": {
                     "main": {
-                        "widgets": list(widgets.keys()),
-                        "grid": {"columns": 24, "margin": 10, "bgColor": "#fafafa",
-                                 "outerMargin": 10},
+                        # TB 4.x 布局：widgets 必须为对象 {widgetId: {sizeX,sizeY,row,col}}，grid 用 gridSettings
+                        "widgets": {wid: {"sizeX": w["sizeX"], "sizeY": w["sizeY"],
+                                           "row": w["row"], "col": w["col"]}
+                                    for wid, w in widgets.items()},
+                        "gridSettings": {"layoutType": "default", "backgroundColor": "#fafafa",
+                                         "columns": 24, "margin": 10, "outerMargin": 10},
                         "resolved": False
                     }
                 }
             }
         },
         "filters": {},
+        "timewindow": {"realtime": {"timewindowMs": 60000}},
         "settings": {"stateControllerId": "0", "showTitle": False,
                      "showDashboardsSelection": True, "showEntitiesSelection": True,
                      "showFilters": True, "showTimewindow": True, "showWidgetsSelection": True}
