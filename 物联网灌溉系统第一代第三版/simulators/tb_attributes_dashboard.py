@@ -56,6 +56,20 @@ def get_all_entities(token, entity):
     return [{"id": x["id"]["id"], "name": x["name"], "type": x.get("type")} for x in out]
 
 
+def get_customers(token):
+    H = api(token)
+    r = requests.get(BASE + "/api/customers?pageSize=50&page=0", headers=H, timeout=15)
+    return [{"id": x["id"]["id"], "title": x["title"]} for x in r.json().get("data", [])]
+
+
+def assign_to_customer(token, customer_id, entity_type, entity_id):
+    """把实体分配给客户（设备/资产/仪表板），幂等"""
+    H = api(token)
+    r = requests.post(BASE + "/api/customer/{}/{}/{}".format(customer_id, entity_type, entity_id),
+                      headers=H, timeout=15)
+    return r.status_code in (200, 201)
+
+
 def set_server_attributes(token, entity_type, entity_id, attrs):
     """POST /api/plugins/telemetry/{ENTITY_TYPE}/{id}/SERVER_SCOPE 设置服务端属性"""
     H = api(token)
@@ -250,17 +264,34 @@ def main():
     existing = find_dashboard(token, "智能灌溉总览")
     body = {"title": "智能灌溉总览", "configuration": configuration}
     if existing:
-        body["id"] = existing["id"]["id"]
+        body["id"] = {"entityType": "DASHBOARD", "id": existing["id"]["id"]}
         r = requests.post(BASE + "/api/dashboard", headers=H, json=body, timeout=30)
         r.raise_for_status()
-        print("  已更新仪表板: {} ({})".format(r.json()["title"], r.json()["id"]["id"][:8]))
+        dashboard_id = r.json()["id"]["id"]
+        print("  已更新仪表板: {} ({})".format(r.json()["title"], dashboard_id[:8]))
     else:
         r = requests.post(BASE + "/api/dashboard", headers=H, json=body, timeout=30)
         r.raise_for_status()
-        print("  已创建仪表板: {} ({})".format(r.json()["title"], r.json()["id"]["id"][:8]))
+        dashboard_id = r.json()["id"]["id"]
+        print("  已创建仪表板: {} ({})".format(r.json()["title"], dashboard_id[:8]))
+
+    print("\n=== 5. 分配给客户（customer 用户可见） ===")
+    customers = get_customers(token)
+    if not customers:
+        print("  [跳过] 无客户")
+    else:
+        c = customers[0]
+        print("  客户: {}".format(c["title"]))
+        assign_to_customer(token, c["id"], "dashboard", dashboard_id)
+        print("  仪表板已分配")
+        n_dev = sum(1 for d in devices if assign_to_customer(token, c["id"], "device", d["id"]))
+        print("  设备已分配 {}/{}".format(n_dev, len(devices)))
+        n_ast = sum(1 for a in field_assets if assign_to_customer(token, c["id"], "asset", a["id"]))
+        print("  田块资产已分配 {}/{}".format(n_ast, len(field_assets)))
 
     print("\n=== 完成 ===")
     print("浏览器访问 ThingsBoard UI (http://localhost:8080) -> 仪表板 -> 智能灌溉总览")
+    print("注：customer 用户（客户端）登录同样可见；实体/仪表板均已分配")
 
 
 if __name__ == "__main__":
