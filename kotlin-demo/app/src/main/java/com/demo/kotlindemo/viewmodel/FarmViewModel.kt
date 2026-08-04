@@ -110,15 +110,17 @@ class FarmViewModel : ViewModel() {
     fun toggleDevice(id: String, forceOn: Boolean? = null) {
         // 先本地乐观更新
         val idx = devices.indexOfFirst { it.id == id }
+        // 目标状态：forceOn 指定则用之，否则取当前状态的相反值
+        val newOn = if (idx >= 0) (forceOn ?: !devices[idx].isOn) else (forceOn ?: false)
         if (idx >= 0) {
-            val newOn = forceOn ?: !devices[idx].isOn
             devices[idx] = devices[idx].copy(isOn = newOn, valveState = if (newOn) "WORKING" else "IDLE")
         }
         // 再发 RPC 到 ThingsBoard（电动阀才可操作）
+        // 注意：必须发送目标状态 newOn（此前误用乐观更新后的 !d.isOn，导致开关方向反了）
         val d = devices.getOrNull(idx)
         if (d != null && d.type == DeviceType.VALVE) {
             scope.launch(Dispatchers.IO) {
-                val ok = repository.toggleValve(id, forceOn ?: !d.isOn)
+                val ok = repository.toggleValve(id, newOn)
                 if (!ok) {
                     errorMessage = "控制失败：设备 $id 未响应"
                 }

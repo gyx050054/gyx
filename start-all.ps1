@@ -84,6 +84,15 @@ if (Get-NetTCPConnection -LocalPort 9091 -State Listen -ErrorAction SilentlyCont
 }
 
 # ---------- 5. 设备模拟器（27 台）----------
+Log '[5/7] 清理旧模拟器进程（避免重复进程导致状态混乱）...'
+$procs = Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue
+foreach ($p in $procs) {
+    if ($p.CommandLine -match 'start_all\.py|simulators[\/]') {
+        Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+        Log "  已停止 PID $($p.ProcessId)"
+    }
+}
+Start-Sleep -Seconds 2
 Log '[5/7] 启动设备模拟器（27 台，MQTT -> ThingsBoard）...'
 Wait-Port 1883 60 'ThingsBoard MQTT'
 Start-Process -FilePath 'py' -ArgumentList 'start_all.py' -WorkingDirectory $SimDir `
