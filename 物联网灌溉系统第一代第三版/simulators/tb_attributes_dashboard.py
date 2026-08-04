@@ -4,16 +4,16 @@
 ==============================================
 1. 27 台设备 Server Attributes：type / deviceName / fieldName / fieldId
 2. 9 个田块资产 Server Attributes：fieldName / deviceCount
-3. 仪表板「智能灌溉总览」：每台设备每个属性一张 value_card 单值卡片（唯一被实证可显示的组件）
-   - 田块：9 张（设备数）
-   - 温湿度计：9 台 × 2（温度、湿度）= 18 张
-   - 电动阀：18 台 × 6（状态/瞬时流量/累计用水/水压/电量/故障）= 108 张
-4. 分配仪表板 + 实体给第一个 customer
+3. 仪表板「智能灌溉总览」：3 个 entities_table 分页表格（田块/温湿度/阀门）
+   - 田块总览表（全部 9 田块：田块名/设备数）
+   - 温湿度计表（全部 9 台：温度/湿度/时间）
+   - 电动阀表（全部 18 台：状态/瞬时流量/累计用水/水压/电量/故障）
+4. 分配仪表板 + 全部实体给第一个 customer（客户用户可见）
 
-组件选型说明（TB 4.3.1.3 实测）：
-- entities_table / timeseries_table：pageSize=1，永远只显示 1 台设备（坑）
-- html_card：Angular 模板不生效（原样显示）
-- value_card（layout=centered）：单值卡片，device/asset 直绑可稳定显示 → 采用
+组件选型说明（TB 4.3.1.3）：
+- entities_table 表格分页展示（用户指定要分页版本）
+- 注意：本版本 entities_table 查询 pageSize 固定为 1（只显示 1 台）为已知限制，
+  若需全量请改用 value_card 单值卡片方案（历史版本）
 
 用法：py tb_attributes_dashboard.py（幂等，可重跑）
 """
@@ -90,43 +90,10 @@ def assign_to_customer(token, customer_id, entity_type, entity_id):
 
 
 def build_dashboard(devices, field_assets):
-    """构造「智能灌溉总览」：每设备每属性一张 value_card"""
+    """构造「智能灌溉总览」：3 个 entities_table 分页表格（田块/温湿度/阀门）"""
     sensors = [d for d in devices if d["type"] == "TEMPERATURE_HUMIDITY"]
     valves = [d for d in devices if d["type"] == "VALVE"]
 
-    # value_card 的 dataKey（单值卡片，settings.type=SERVER 用于 attribute）
-    def dkey(name, label, color, ktype="timeseries", scope=None):
-        s = {"type": scope} if scope else {}
-        return {"name": name, "label": label, "type": ktype, "color": color,
-                "settings": s, "_hash": round(abs(hash(name)) % 1000 / 1000, 3)}
-
-    def value_card_widget(dtype, entity_id, title, dk, size_x, size_y, row, col):
-        ds = [{"type": dtype, "name": "", "deviceId": entity_id if dtype == "device" else None,
-               "assetId": entity_id if dtype == "asset" else None,
-               "dataKeys": [dk], "alarmFilterConfig": {"statusList": ["ACTIVE"]}}]
-        ds[0].pop("deviceId", None) if dtype != "device" else None
-        ds[0].pop("assetId", None) if dtype != "asset" else None
-        cfg = {"datasources": ds,
-               "settings": {
-                   "labelPosition": "top", "layout": "centered", "showLabel": True,
-                   "labelFont": {"family": "Roboto", "size": 12, "sizeUnit": "px",
-                                 "style": "normal", "weight": "500"},
-                   "labelColor": {"type": "constant", "color": "rgba(0, 0, 0, 0.87)"},
-                   "showUnits": True, "showDate": False,
-                   "unitsColor": {"type": "constant", "color": "rgba(0, 0, 0, 0.54)"},
-                   "valueFont": {"family": "Roboto", "size": 20, "sizeUnit": "px",
-                                 "style": "normal", "weight": "500"}
-               },
-               "title": title, "showTitle": True, "showTitleIcon": False,
-               "showTitleButtons": False, "backgroundColor": "rgba(0, 0, 0, 0)",
-               "color": "rgba(0, 0, 0, 0.87)", "padding": "4px", "dropShadow": True,
-               "enableFullscreen": True,
-               "timewindow": {"realtime": {"timewindowMs": 60000}}}
-        return {"id": str(uuid.uuid4()), "typeFullFqn": "system.cards.value_card",
-                "type": "latest", "title": title,
-                "sizeX": size_x, "sizeY": size_y, "row": row, "col": col, "config": cfg}
-
-    # 田块卡用 type=entity + singleEntity alias（value_card 的 asset 数据源不渲染）
     alias_ids = {}
 
     def alias_id(kind):
@@ -134,74 +101,106 @@ def build_dashboard(devices, field_assets):
         alias_ids[kind] = uid
         return uid
 
-    entity_aliases = {}
-    for i, a in enumerate(field_assets):
-        entity_aliases[alias_id("f{}".format(i))] = {
-            "alias": a["name"],
-            "filter": {"type": "singleEntity",
-                       "singleEntity": {"entityType": "ASSET", "id": a["id"]}}}
+    entity_aliases = {
+        alias_id("fields"): {"alias": "全部田块",
+                             "filter": {"type": "entityList", "entityType": "ASSET",
+                                        "entityList": [a["id"] for a in field_assets]}},
+        alias_id("sensors"): {"alias": "全部温湿度计",
+                              "filter": {"type": "entityList", "entityType": "DEVICE",
+                                         "entityList": [d["id"] for d in sensors]}},
+        alias_id("valves"): {"alias": "全部电动阀",
+                             "filter": {"type": "entityList", "entityType": "DEVICE",
+                                        "entityList": [d["id"] for d in valves]}},
+    }
 
-    def card_widget_entity(alias_kind, title, dk, size_x, size_y, row, col):
-        ds = [{"type": "entity", "name": alias_ids[alias_kind],
-               "entityAliasId": alias_ids[alias_kind], "dataKeys": [dk]}]
-        cfg = {"datasources": ds,
-               "settings": {
-                   "labelPosition": "top", "layout": "centered", "showLabel": True,
-                   "labelFont": {"family": "Roboto", "size": 12, "sizeUnit": "px",
-                                 "style": "normal", "weight": "500"},
-                   "labelColor": {"type": "constant", "color": "rgba(0, 0, 0, 0.87)"},
-                   "showUnits": True, "showDate": False,
-                   "unitsColor": {"type": "constant", "color": "rgba(0, 0, 0, 0.54)"},
-                   "valueFont": {"family": "Roboto", "size": 20, "sizeUnit": "px",
-                                 "style": "normal", "weight": "500"}
-               },
-               "title": title, "showTitle": True, "showTitleIcon": False,
-               "showTitleButtons": False, "backgroundColor": "rgba(0, 0, 0, 0)",
-               "color": "rgba(0, 0, 0, 0.87)", "padding": "4px", "dropShadow": True,
-               "enableFullscreen": True,
-               "timewindow": {"realtime": {"timewindowMs": 60000}}}
-        return {"id": str(uuid.uuid4()), "typeFullFqn": "system.cards.value_card",
-                "type": "latest", "title": title,
-                "sizeX": size_x, "sizeY": size_y, "row": row, "col": col, "config": cfg}
+    def find_dev(name):
+        return next((d for d in devices if d["name"] == name), None)
+
+    s1 = find_dev("田地1-温湿度计")
+    v1 = find_dev("田地1-灌溉阀门A")
+    if s1:
+        entity_aliases[alias_id("sensor1")] = {
+            "alias": "田地1-温湿度计",
+            "filter": {"type": "singleEntity",
+                       "singleEntity": {"entityType": "DEVICE", "id": s1["id"]}}}
+    if v1:
+        entity_aliases[alias_id("valve1")] = {
+            "alias": "田地1-灌溉阀门A",
+            "filter": {"type": "singleEntity",
+                       "singleEntity": {"entityType": "DEVICE", "id": v1["id"]}}}
+
+    def key(name, label, color, ktype="timeseries"):
+        return {"name": name, "label": label, "type": ktype, "color": color,
+                "settings": {}, "_hash": round(abs(hash(name)) % 1000 / 1000, 3)}
+
+    def datasource(alias_kind, keys):
+        return [{"type": "entity", "name": alias_ids[alias_kind],
+                 "entityAliasId": alias_ids[alias_kind], "dataKeys": keys}]
+
+    def widget(wid, type_full_fqn, wtype, title, ds, size_x, size_y, row, col,
+               timewindow=None, wsettings=None):
+        cfg = {"datasources": ds, "settings": wsettings or {}, "title": title,
+               "showTitle": True, "showTitleIcon": False, "showTitleButtons": True,
+               "backgroundColor": "rgba(0, 0, 0, 0)", "color": "rgba(0, 0, 0, 0.87)",
+               "padding": "4px", "dropShadow": True, "enableFullscreen": True,
+               "timewindow": timewindow or {"realtime": {"timewindowMs": 60000}}}
+        return {"id": wid, "typeFullFqn": type_full_fqn, "type": wtype, "title": title,
+                "sizeX": size_x, "sizeY": size_y, "row": row, "col": col,
+                "config": cfg}
+
+    # entities_table 完整 settings（默认 defaultPageSize=10 分页）
+    table_settings = {
+        "entitiesTitle": "实体", "enableSearch": True, "enableSelectColumnDisplay": True,
+        "enableStickyHeader": True, "enableStickyAction": True,
+        "reserveSpaceForHiddenAction": "true",
+        "displayEntityName": False, "displayEntityLabel": False, "displayEntityType": False,
+        "displayPagination": True, "defaultPageSize": 10,
+        "pageStepCount": 3, "pageStepIncrement": 10,
+        "defaultSortOrder": "displayName", "useRowStyleFunction": False
+    }
 
     widgets = {}
 
     def add(w):
         widgets[w["id"]] = w
 
-    row = 0
-    # ① 田块卡片 x9（设备数，entity alias 数据源 + attribute SERVER）
-    for i, a in enumerate(field_assets):
-        add(card_widget_entity("f{}".format(i), a["name"] + " · 设备数",
-                               dkey("deviceCount", "设备数", "#4caf50", "attribute", "SERVER"),
-                               8, 3, row + i // 3 * 3, i % 3 * 8))
-    row += 9
-    # ② 温湿度卡片 x18（9 台 × 温度/湿度）
-    for i, d in enumerate(sensors):
-        short = d["name"].replace("-温湿度计", "")
-        add(value_card_widget("device", d["id"], short + " · 温度(℃)",
-                              dkey("temperature", "温度", "#f44336"),
-                              12, 3, row + i * 3, 0))
-        add(value_card_widget("device", d["id"], short + " · 湿度(%RH)",
-                              dkey("humidity", "湿度", "#2196f3"),
-                              12, 3, row + i * 3, 12))
-    row += 9 * 3
-    # ③ 电动阀卡片 x108（18 台 × 6 属性）
-    valve_keys = [
-        ("valveState", "状态", "#ff9800"),
-        ("instantFlow", "瞬时流量(L/min)", "#4caf50"),
-        ("totalWaterUsage", "累计用水(m³)", "#2196f3"),
-        ("waterPressure", "水压(MPa)", "#9c27b0"),
-        ("batteryLevel", "电量(%)", "#ff5722"),
-        ("faultStatus", "故障", "#f44336"),
-    ]
-    for i, d in enumerate(valves):
-        short = d["name"].replace("田地", "").replace("-灌溉阀门", "阀门")
-        for j, (k, label, color) in enumerate(valve_keys):
-            add(value_card_widget("device", d["id"], short + " · " + label,
-                                  dkey(k, label, color),
-                                  4, 3, row + i * 3, j * 4))
-    row += 18 * 3
+    # w1 田块总览表
+    add(widget(str(uuid.uuid4()), "system.cards.entities_table", "latest",
+               "田块总览（设备数量）",
+               datasource("fields", [key("fieldName", "田块", "#2196f3", "attribute"),
+                                     key("deviceCount", "设备数", "#4caf50", "attribute")]),
+               12, 7, 0, 0, wsettings=table_settings))
+    # w2 温湿度计实时数据表
+    add(widget(str(uuid.uuid4()), "system.cards.entities_table", "latest",
+               "温湿度计实时数据",
+               datasource("sensors", [key("temperature", "温度(℃)", "#f44336"),
+                                      key("humidity", "湿度(%RH)", "#2196f3"),
+                                      key("ts", "时间", "#9e9e9e")]),
+               12, 7, 0, 12, wsettings=table_settings))
+    # w3 电动阀状态表
+    add(widget(str(uuid.uuid4()), "system.cards.entities_table", "latest",
+               "电动阀状态",
+               datasource("valves", [key("valveState", "状态", "#ff9800"),
+                                     key("instantFlow", "瞬时流量(L/min)", "#4caf50"),
+                                     key("totalWaterUsage", "累计用水(m³)", "#2196f3"),
+                                     key("waterPressure", "水压(MPa)", "#9c27b0"),
+                                     key("batteryLevel", "电量(%)", "#ff5722"),
+                                     key("faultStatus", "故障", "#f44336")]),
+               12, 7, 7, 0, wsettings=table_settings))
+    # w4 温湿度历史曲线（田地1-温湿度计）
+    if s1:
+        add(widget(str(uuid.uuid4()), "system.charts.basic_timeseries", "timeseries",
+                   "温湿度历史曲线（田地1-温湿度计）",
+                   datasource("sensor1", [key("temperature", "温度", "#f44336"),
+                                          key("humidity", "湿度", "#2196f3")]),
+                   12, 7, 7, 12, {"realtime": {"timewindowMs": 3600000}}))
+    # w5 阀门流量曲线（田地1-灌溉阀门A）
+    if v1:
+        add(widget(str(uuid.uuid4()), "system.charts.basic_timeseries", "timeseries",
+                   "阀门流量曲线（田地1-灌溉阀门A）",
+                   datasource("valve1", [key("instantFlow", "瞬时流量", "#4caf50"),
+                                         key("waterPressure", "水压", "#9c27b0")]),
+                   12, 7, 14, 0, {"realtime": {"timewindowMs": 3600000}}))
 
     configuration = {
         "description": "智能灌溉总览",
