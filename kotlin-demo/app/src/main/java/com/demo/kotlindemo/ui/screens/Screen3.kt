@@ -80,28 +80,36 @@ fun TaskManagementScreen(
             taskViewModel.loadTasks()
         }
 
-        // 判断任务列表是否为空
-        if (taskViewModel.tasks.isEmpty()) {
-            // 列表为空 → 显示空态页面
-            EmptyState(modifier = Modifier.padding(padding).fillMaxSize())
-        } else {
-            // 列表不为空 → 显示任务列表
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentPadding = PaddingValues(12.dp),  // 列表整体边距
-                verticalArrangement = Arrangement.spacedBy(10.dp)  // 项间距
-            ) {
-                // 遍历所有任务
-                items(taskViewModel.tasks, key = { it.id }) { task ->
-                    TaskCard(
-                        task = task,                                   // 任务数据
-                        onDelete = { taskViewModel.deleteTask(task.id) }  // 删除
-                    )
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // 任务总数统计
+            Text(
+                "📋 共 ${taskViewModel.tasks.size} 条任务",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
+            if (taskViewModel.tasks.isEmpty()) {
+                // 列表为空 → 显示空态页面
+                EmptyState(modifier = Modifier.fillMaxSize())
+            } else {
+                // 列表不为空 → 显示任务列表
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize(),
+                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 80.dp),  // 列表整体边距
+                    verticalArrangement = Arrangement.spacedBy(10.dp)  // 项间距
+                ) {
+                    // 遍历所有任务
+                    items(taskViewModel.tasks, key = { it.id }) { task ->
+                        TaskCard(
+                            task = task,                                   // 任务数据
+                            onDelete = { taskViewModel.deleteTask(task.id) }  // 删除
+                        )
+                    }
+                    // 底部留空
+                    item { Spacer(Modifier.height(80.dp)) }
                 }
-                // 底部留空
-                item { Spacer(Modifier.height(80.dp)) }
             }
         }
     }
@@ -140,10 +148,11 @@ private fun TaskCard(
                 .padding(14.dp),  // 内边距
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 状态点
-            StatusDot(task.status)
-
-            Spacer(Modifier.width(12.dp))  // 状态点和文字的间距
+            // 状态点：仅待执行/执行中显示（已完成/已取消不冒红点）
+            if (task.status == TaskStatus.PENDING || task.status == TaskStatus.RUNNING) {
+                StatusDot(task.status)
+                Spacer(Modifier.width(12.dp))  // 状态点和文字的间距
+            }
 
             // 中间信息区域
             Column(modifier = Modifier.weight(1f)) {
@@ -196,16 +205,15 @@ private fun TaskCard(
  */
 @Composable
 private fun StatusDot(status: TaskStatus) {
-    // 根据状态决定颜色
+    // 根据状态决定颜色（仅待执行/执行中被调用，统一用红色表示活跃任务）
     val color = when (status) {
-        // 待执行 → 轮廓色（灰色）
-        TaskStatus.PENDING   -> MaterialTheme.colorScheme.outline
-        // 执行中 → 主色（蓝色/紫色）
-        TaskStatus.RUNNING   -> MaterialTheme.colorScheme.primary
-        // 已完成 → 表面变体色（淡化）
+        // 待执行 → 红色（未运行但有任务待处理）
+        TaskStatus.PENDING   -> MaterialTheme.colorScheme.error
+        // 执行中 → 红色（运行中）
+        TaskStatus.RUNNING   -> MaterialTheme.colorScheme.error
+        // 已完成/已取消：不显示状态点（由调用方控制）
         TaskStatus.COMPLETED -> MaterialTheme.colorScheme.surfaceVariant
-        // 已取消 → 错误色（红）
-        TaskStatus.CANCELLED -> MaterialTheme.colorScheme.error
+        TaskStatus.CANCELLED -> MaterialTheme.colorScheme.surfaceVariant
     }
     // 用 Surface 绘制一个小方块
     Surface(

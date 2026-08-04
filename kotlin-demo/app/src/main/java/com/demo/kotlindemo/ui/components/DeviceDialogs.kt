@@ -204,12 +204,40 @@ fun BatchControlDialog(
         selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
     }
 
+    // 全选/取消全选
+    fun toggleSelectAll() {
+        selectedIds = if (selectedIds.size == devices.size && devices.isNotEmpty()) {
+            emptySet()
+        } else {
+            devices.map { it.id }.toSet()
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("🎛 批量操作") },
         text = {
             if (!showTimingForm) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // 全选行（一键勾选/取消全部设备）
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.small)
+                            .clickable { toggleSelectAll() }
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = selectedIds.size == devices.size && devices.isNotEmpty(),
+                            onCheckedChange = { toggleSelectAll() }
+                        )
+                        Text(
+                            "全选（共 ${devices.size} 台）",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                     // 设备勾选列表（可滚动，限制高度）
                     Text(
                         "勾选要操作的设备（已选 ${selectedIds.size} 台）：",
