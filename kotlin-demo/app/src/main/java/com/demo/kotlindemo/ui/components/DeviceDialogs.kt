@@ -34,6 +34,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 // ═══════════════════════════════════════════════════════════
 // ① 开关弹窗 — 设备状态控制
@@ -101,15 +102,17 @@ fun SwitchDialog(
 // ═══════════════════════════════════════════════════════════
 
 /**
- * 时间范围设置弹窗
+ * 时间范围设置弹窗（需求文档 3.6.1）
  * 用于添加单设备的定时任务，或批量定时
+ *
+ * 开始时间：默认「立即开始」，可选「定时」→ 点击选择日期 + 时间
+ * 持续时长：点击选择预设（15/30 分钟、1/2/4 小时），结束时间自动计算
  *
  * @param device 关联设备（可选，为null时用于批量操作）
  * @param title 弹窗标题，默认"⏰ 添加定时任务"
  * @param onDismiss 关闭回调
  * @param onConfirm 确认回调，返回开始和结束时间戳
  */
-// @OptIn 标记使用实验性 Material3 API（OutlinedTextField）
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TimeRangeDialog(
@@ -120,10 +123,11 @@ fun TimeRangeDialog(
 ) {
     // 获取当前时间（毫秒），remember 让它在重组时不变
     val now = remember { System.currentTimeMillis() }
-    // 开始时间默认 = 现在 + 1 分钟
-    var startText by remember { mutableStateOf(formatTime(now + 60_000)) }
-    // 结束时间默认 = 现在 + 10 分钟
-    var endText   by remember { mutableStateOf(formatTime(now + 600_000)) }
+    // 开始时间：默认立即开始
+    var startTime by remember { mutableStateOf(now) }
+    var immediate by remember { mutableStateOf(true) }
+    // 持续时长：默认 30 分钟（需求：间隔 1 分钟起步）
+    var durationMs by remember { mutableStateOf(30 * 60_000L) }
 
     AlertDialog(
         onDismissRequest = onDismiss,  // 关闭
@@ -132,41 +136,23 @@ fun TimeRangeDialog(
             Text(if (device != null) "$title · ${device.name}" else title)
         },
         text = {
-            // 两个时间输入框
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                // 开始时间输入框
-                OutlinedTextField(
-                    value = startText,                // 当前值
-                    onValueChange = { startText = it }, // 更新值
-                    label = { Text("开始时间（默认现在）") },
-                    placeholder = { Text("格式：yyyy-MM-dd HH:mm") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                // 结束时间输入框
-                OutlinedTextField(
-                    value = endText,
-                    onValueChange = { endText = it },
-                    label = { Text("结束时间") },
-                    placeholder = { Text("格式：yyyy-MM-dd HH:mm") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                // 格式提示
-                Text(
-                    "💡 时间格式：2026-07-30 14:00",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                TimingPicker(
+                    now = now,
+                    immediate = immediate,
+                    onImmediateChange = { immediate = it },
+                    startTime = startTime,
+                    onStartTimeChange = { startTime = it },
+                    durationMs = durationMs,
+                    onDurationChange = { durationMs = it }
                 )
             }
         },
         confirmButton = {
-            // 确定按钮：解析时间字符串并回调
+            // 确定按钮：立即 = now；定时 = 选择的日期+时间；结束 = 开始 + 时长
             TextButton(onClick = {
-                // 解析失败就用默认值（现在+1分 / 现在+10分）
-                val s = parseTime(startText) ?: (now + 60_000)
-                val e = parseTime(endText)   ?: (now + 600_000)
-                onConfirm(s, e)  // 回调返回两个时间戳
+                val start = if (immediate) now else startTime
+                onConfirm(start, start + durationMs)
             }) { Text("确定") }
         },
         dismissButton = {
@@ -204,10 +190,11 @@ fun BatchControlDialog(
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
     // 是否在「添加定时任务」子表单中
     var showTimingForm by remember { mutableStateOf(false) }
-    // 预填默认时间
+    // 时间选择：默认立即开始 + 30 分钟时长（点击选择）
     val now = remember { System.currentTimeMillis() }
-    var startText by remember { mutableStateOf(formatTime(now + 60_000)) }
-    var endText   by remember { mutableStateOf(formatTime(now + 600_000)) }
+    var startTime by remember { mutableStateOf(now) }
+    var immediate by remember { mutableStateOf(true) }
+    var durationMs by remember { mutableStateOf(30 * 60_000L) }
 
     // 勾选对应的设备列表
     val selectedDevices = devices.filter { it.id in selectedIds }
@@ -298,7 +285,7 @@ fun BatchControlDialog(
                     }
                 }
             } else {
-                // 子表单：为勾选的设备选择时间范围
+                // 子表单：为勾选的设备选择时间范围（点击选择）
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     // 提示文字
                     Text(
@@ -306,21 +293,15 @@ fun BatchControlDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    // 开始时间输入
-                    OutlinedTextField(
-                        value = startText,
-                        onValueChange = { startText = it },
-                        label = { Text("开始时间（默认现在）") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                    // 结束时间输入
-                    OutlinedTextField(
-                        value = endText,
-                        onValueChange = { endText = it },
-                        label = { Text("结束时间") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                    // 时间选择器：立即/定时 + 日期/时间点击选择 + 时长预设
+                    TimingPicker(
+                        now = now,
+                        immediate = immediate,
+                        onImmediateChange = { immediate = it },
+                        startTime = startTime,
+                        onStartTimeChange = { startTime = it },
+                        durationMs = durationMs,
+                        onDurationChange = { durationMs = it }
                     )
                 }
             }
@@ -329,9 +310,8 @@ fun BatchControlDialog(
             if (showTimingForm) {
                 // 子表单模式：确定按钮
                 TextButton(onClick = {
-                    val s = parseTime(startText) ?: (now + 60_000)
-                    val e = parseTime(endText)   ?: (now + 600_000)
-                    onAddTiming(selectedDevices, s, e)  // 回调勾选设备 + 时间戳
+                    val s = if (immediate) now else startTime
+                    onAddTiming(selectedDevices, s, s + durationMs)  // 回调勾选设备 + 时间戳
                 }) { Text("确定") }
             } else {
                 // 主界面模式：关闭按钮
@@ -348,18 +328,167 @@ fun BatchControlDialog(
 }
 
 // ═══════════════════════════════════════════════════════════
+// ④ 定时任务时间选择器 — 点击选择，替代手动输入（需求 3.6.1）
+// 开始时间：立即 / 定时（DatePicker + TimePicker 点击选择）
+// 持续时长：预设选项点击选择，结束时间自动计算
+// ═══════════════════════════════════════════════════════════
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimingPicker(
+    now: Long,                              // 当前时间
+    immediate: Boolean,                     // 是否立即开始
+    onImmediateChange: (Boolean) -> Unit,   // 切换立即/定时
+    startTime: Long,                        // 当前选择的开始时间（定时模式）
+    onStartTimeChange: (Long) -> Unit,      // 更新开始时间
+    durationMs: Long,                       // 持续时长
+    onDurationChange: (Long) -> Unit        // 更新持续时长
+) {
+    // 定时模式下弹出的日期/时间选择器开关
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState()
+    val timePickerState = rememberTimePickerState(initialHour = 8, initialMinute = 0, is24Hour = true)
+
+    // 时长预设（需求：间隔 1 分钟起步，提供常用档位）
+    val durations = listOf(
+        15 * 60_000L to "15 分钟",
+        30 * 60_000L to "30 分钟",
+        60 * 60_000L to "1 小时",
+        120 * 60_000L to "2 小时",
+        240 * 60_000L to "4 小时"
+    )
+
+    // ① 开始方式：立即 / 定时
+    Text("开始时间：", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(
+            selected = immediate,
+            onClick = { onImmediateChange(true) },
+            label = { Text("⚡ 立即开始") }
+        )
+        FilterChip(
+            selected = !immediate,
+            onClick = { onImmediateChange(false) },
+            label = { Text("📅 定时开始") }
+        )
+    }
+
+    if (immediate) {
+        // 立即：展示当前时间
+        Text(
+            "开始时间：${formatTime(now)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    } else {
+        // 定时：点击选日期 + 时间
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { showDatePicker = true }) {
+                Text("📅 ${formatDate(startTime)}")
+            }
+            OutlinedButton(onClick = { showTimePicker = true }) {
+                Text("🕐 ${formatTimeOfDay(startTime)}")
+            }
+        }
+    }
+
+    // ② 持续时长
+    Text("持续时长：", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        durations.forEach { (ms, label) ->
+            FilterChip(
+                selected = durationMs == ms,
+                onClick = { onDurationChange(ms) },
+                label = { Text(label) }
+            )
+        }
+    }
+
+    // ③ 结束时间预览（自动计算）
+    val end = (if (immediate) now else startTime) + durationMs
+    Text(
+        "结束时间：${formatTime(end)}",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.primary
+    )
+
+    // 日期选择弹窗（Material3 DatePicker，注意 UTC 转本地时区）
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { utcMidnight ->
+                        val offset = TimeZone.getDefault().getOffset(utcMidnight)
+                        val localDate = utcMidnight + offset   // 本地时区当天 00:00
+                        onStartTimeChange(combineDateTime(localDate, startTime))
+                    }
+                    showDatePicker = false
+                }) { Text("确定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    // 时间选择弹窗（Material3 TimePicker）
+    if (showTimePicker) {
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    onStartTimeChange(
+                        Calendar.getInstance().apply {
+                            timeInMillis = startTime
+                            set(Calendar.HOUR_OF_DAY, timePickerState.hour)
+                            set(Calendar.MINUTE, timePickerState.minute)
+                        }.timeInMillis
+                    )
+                    showTimePicker = false
+                }) { Text("确定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) { Text("取消") }
+            },
+            text = { TimePicker(state = timePickerState) }
+        )
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
 // 工具函数
 // ═══════════════════════════════════════════════════════════
 
 // 显示用的时间格式器：yyyy-MM-dd HH:mm
 private val displayFormatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
 
-// 解析用的时间格式器列表（按优先级排列）
-private val parseFormatters = listOf(
-    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()),  // 完整格式
-    SimpleDateFormat("MM-dd HH:mm",      Locale.getDefault()),  // 月日时分
-    SimpleDateFormat("HH:mm",            Locale.getDefault())   // 仅时分
-)
+// 日期格式器：yyyy-MM-dd（日期选择按钮显示）
+private val dateFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+
+// 时分格式器：HH:mm（时间选择按钮显示）
+private val timeOfDayFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+// 用新日期（dateMillis 本地零点）替换原时间的日期部分，时分秒保留
+private fun combineDateTime(dateMillis: Long, timeMillis: Long): Long {
+    val t = Calendar.getInstance().apply { timeInMillis = timeMillis }
+    return Calendar.getInstance().apply {
+        timeInMillis = dateMillis
+        set(Calendar.HOUR_OF_DAY, t.get(Calendar.HOUR_OF_DAY))
+        set(Calendar.MINUTE, t.get(Calendar.MINUTE))
+        set(Calendar.SECOND, t.get(Calendar.SECOND))
+        set(Calendar.MILLISECOND, t.get(Calendar.MILLISECOND))
+    }.timeInMillis
+}
+
+// 格式化日期（yyyy-MM-dd）
+private fun formatDate(ts: Long): String = dateFormatter.format(Date(ts))
+
+// 格式化时分（HH:mm）
+private fun formatTimeOfDay(ts: Long): String = timeOfDayFormatter.format(Date(ts))
 
 /**
  * 把时间戳格式化为 "yyyy-MM-dd HH:mm" 字符串
@@ -368,47 +497,3 @@ private val parseFormatters = listOf(
  * @return 格式化后的时间字符串
  */
 private fun formatTime(ts: Long): String = displayFormatter.format(Date(ts))
-
-/**
- * 把时间字符串解析为毫秒时间戳
- * 支持三种格式：
- *   - yyyy-MM-dd HH:mm
- *   - MM-dd HH:mm
- *   - HH:mm
- *
- * @param text 时间字符串
- * @return 解析成功返回 Long 毫秒时间戳，失败返回 null
- */
-private fun parseTime(text: String): Long? {
-    // 空字符串直接返回 null
-    if (text.isBlank()) return null
-    // 获取当前时间的 Calendar 实例
-    val now = Calendar.getInstance()
-    // 依次尝试每种格式
-    for (fmt in parseFormatters) {
-        try {
-            // 尝试解析
-            val parsed = fmt.parse(text) ?: continue
-            val cal = Calendar.getInstance()
-            // 把解析结果设置到 Calendar 中
-            cal.time = parsed
-
-            // 如果格式不含年份（没有-或只有1个-），补上今年
-            if (!text.contains("-") || text.count { it == '-' } == 1) {
-                cal.set(Calendar.YEAR, now.get(Calendar.YEAR))
-            }
-            // 如果格式只含 HH:mm（没有-），补上今天日期
-            if (!text.contains("-")) {
-                cal.set(Calendar.MONTH, now.get(Calendar.MONTH))
-                cal.set(Calendar.DAY_OF_MONTH, now.get(Calendar.DAY_OF_MONTH))
-            }
-
-            // 返回毫秒时间戳
-            return cal.timeInMillis
-        } catch (_: Exception) {
-            // 当前格式解析失败，继续尝试下一个格式
-        }
-    }
-    // 所有格式都失败，返回 null
-    return null
-}

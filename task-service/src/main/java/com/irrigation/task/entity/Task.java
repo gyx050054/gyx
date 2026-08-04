@@ -18,8 +18,8 @@ public class Task {
     public enum Status {
         PENDING,     // 等待执行（未到开始时间）
         RUNNING,     // 执行中
-        COMPLETED,   // 已完成（执行完自动删除前）
-        CANCELLED    // 已取消
+        COMPLETED,   // 已完成（到达结束时间自动完成，保留记录）
+        CANCELLED    // 已取消（用户手动取消，软删除）
     }
 
     @Id

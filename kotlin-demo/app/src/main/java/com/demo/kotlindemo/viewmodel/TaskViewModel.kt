@@ -115,7 +115,7 @@ private fun com.demo.kotlindemo.data.dto.ServiceTask.toTimingTask(): TimingTask 
     val status = when (this.status) {
         "RUNNING" -> TaskStatus.RUNNING
         "COMPLETED" -> TaskStatus.COMPLETED
-        "CANCELLED" -> TaskStatus.COMPLETED
+        "CANCELLED" -> TaskStatus.CANCELLED
         else -> TaskStatus.PENDING
     }
     return TimingTask(

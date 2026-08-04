@@ -4,8 +4,8 @@
 ================================
 模拟一台电动阀（内嵌流量计）接入 ThingsBoard：
 - 通过 MQTT 使用设备 accessToken 认证
-- 未工作(IDLE)：每 60 秒上报 {valveState, batteryLevel, faultStatus}（文档：每 30 分钟，演示加速）
-- 工作(WORKING)：每 10 秒上报 {valveState, instantFlow, totalWaterUsage, waterPressure, batteryLevel}
+- 未工作(IDLE)：每 60 秒上报 {valveState, deviceId, faultStatus, batteryLevel, ts}（文档：每 30 分钟，演示加速）
+- 工作(WORKING)：每 10 秒上报 {valveState, deviceId, instantFlow, totalWaterUsage, waterPressure, batteryLevel, ts}
 - 支持 RPC：setValveState(开/关)、getValveStatus、pauseValve
 
 用法：py valve_simulator.py <accessToken> [host] [port]
@@ -26,6 +26,7 @@ class ValveSimulator:
         self.token = token
         self.host = host
         self.port = port
+        self.device_id = token[:20]   # 上报字段 deviceId（UUID 由 ThingsBoard 管理，这里用 token 前缀标识）
         self.is_on = False            # 阀门是否开启
         self.battery = random.randint(70, 100)
         self.fault = False            # 是否故障
@@ -84,10 +85,12 @@ class ValveSimulator:
         return {"result": "FAIL", "error": "unknown method: {}".format(method)}
 
     def report(self):
-        """按当前状态组装遥测并上报"""
+        """按当前状态组装遥测并上报（含 ts 采集时间戳、deviceId，符合文档 3.3.1/3.4.1）"""
         data = {
             "valveState": "WORKING" if self.is_on else "IDLE",
+            "deviceId": self.device_id,
             "batteryLevel": self.battery,
+            "ts": int(time.time() * 1000),
         }
         if self.is_on:
             # 工作状态：流量波动

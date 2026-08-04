@@ -22,8 +22,9 @@ import java.util.List;
  *  ③ 无冲突写入数据库
  *  ④ 每 10 秒定时扫描
  *  ⑤ 执行任务（发 RPC 开/关阀门）
- *  ⑥ 到达结束时间自动删除任务
- *  ⑦ 手动删除：未开始直接删；已开始先发暂停
+ *  ⑥ 到达结束时间自动完成（置 COMPLETED，保留记录供任务管理展示）
+ *  ⑦ 手动取消：置 CANCELLED（已开始先发暂停），不物理删除
+ * 状态：PENDING(等待) / RUNNING(执行中) / COMPLETED(已完成) / CANCELLED(已取消)
  */
 @Service
 public class TaskSchedulerService {
@@ -67,26 +68,33 @@ public class TaskSchedulerService {
         return taskRepository.save(t);
     }
 
-    /** 删除任务：未开始直接删；已开始(RUNNING)先发暂停再删 */
+    /** 取消任务（软删除，用户需求 3.6.3）：置 CANCELLED，不物理删除；运行中先发暂停 */
     @Transactional
-    public boolean deleteTask(Long taskId) {
+    public boolean cancelTask(Long taskId) {
         Task t = taskRepository.findById(taskId).orElse(null);
         if (t == null) {
+            return false;
+        }
+        // 已完成/已取消为终态，不可再取消（文档：保持原状态）
+        if (t.getStatus() == Task.Status.COMPLETED || t.getStatus() == Task.Status.CANCELLED) {
+            log.info("任务 {} 状态为 {}（终态），不可取消", taskId, t.getStatus());
             return false;
         }
         if (t.getStatus() == Task.Status.RUNNING) {
             // 文档 ⑦：任务在进行就直接发暂停
             tbClient.pauseValve(t.getDeviceId());
-            log.info("删除运行中任务 {} -> 已发 pauseValve 暂停设备 {}", taskId, t.getDeviceId());
+            log.info("取消运行中任务 {} -> 已发 pauseValve 暂停设备 {}", taskId, t.getDeviceId());
         }
-        taskRepository.delete(t);
+        t.setStatus(Task.Status.CANCELLED);
+        taskRepository.save(t);
+        log.info("任务 {} 已取消（状态 CANCELLED）", taskId);
         return true;
     }
 
     /**
      * 定时扫描（每 10 秒）：
      * 1. 到点的 PENDING 任务 → 执行 RPC 开/关 → 置 RUNNING
-     * 2. 超时的 RUNNING 任务 → 执行关闭 → 自动删除（文档 ⑥）
+     * 2. 超时的 RUNNING 任务 → 执行关闭 → 置 COMPLETED（保留记录，文档 ⑥）
      */
     @Scheduled(fixedDelay = 10_000)
     @Transactional
@@ -111,13 +119,13 @@ public class TaskSchedulerService {
             // RPC 失败的任务保留 PENDING，下轮重试
         }
 
-        // ② 清理超时任务
+        // ② 到期自动完成
         List<Task> expired = taskRepository.findByStatusAndEndTimeLessThanEqual(Task.Status.RUNNING, now);
         for (Task t : expired) {
             tbClient.closeValve(t.getDeviceId());   // 到点自动关闭
             t.setStatus(Task.Status.COMPLETED);
-            log.info("任务 {} 到期，关闭设备 {}，自动删除", t.getId(), t.getDeviceId());
-            taskRepository.delete(t);                // 文档：执行完自动去数据库删除任务
+            taskRepository.save(t);                 // 保留记录（已完成状态供任务管理展示）
+            log.info("任务 {} 到期，关闭设备 {}，状态置 COMPLETED", t.getId(), t.getDeviceId());
         }
     }
 

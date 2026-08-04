@@ -127,6 +127,8 @@ private fun TaskCard(
                 TaskStatus.RUNNING   -> MaterialTheme.colorScheme.tertiaryContainer
                 // 已完成 → 表面变体色（淡化）
                 TaskStatus.COMPLETED -> MaterialTheme.colorScheme.surfaceVariant
+                // 已取消 → 错误容器色（淡化）
+                TaskStatus.CANCELLED -> MaterialTheme.colorScheme.errorContainer
                 // 待执行 → 表面色（默认）
                 TaskStatus.PENDING   -> MaterialTheme.colorScheme.surface
             }
@@ -174,13 +176,15 @@ private fun TaskCard(
                 )
             }
 
-            // 操作按钮：仅删除（状态由微服务端管理）
-            IconButton(onClick = onDelete) {
-                Icon(
-                    Icons.Default.Delete,  // 删除图标
-                    contentDescription = "删除",
-                    tint = MaterialTheme.colorScheme.error  // 红色（错误色）
-                )
+            // 操作按钮：仅 PENDING/RUNNING 可取消（已完成/已取消为终态，不显示按钮）
+            if (task.status == TaskStatus.PENDING || task.status == TaskStatus.RUNNING) {
+                IconButton(onClick = onDelete) {
+                    Icon(
+                        Icons.Default.Delete,  // 取消图标
+                        contentDescription = "取消",
+                        tint = MaterialTheme.colorScheme.error  // 红色（错误色）
+                    )
+                }
             }
         }
     }
@@ -200,6 +204,8 @@ private fun StatusDot(status: TaskStatus) {
         TaskStatus.RUNNING   -> MaterialTheme.colorScheme.primary
         // 已完成 → 表面变体色（淡化）
         TaskStatus.COMPLETED -> MaterialTheme.colorScheme.surfaceVariant
+        // 已取消 → 错误色（红）
+        TaskStatus.CANCELLED -> MaterialTheme.colorScheme.error
     }
     // 用 Surface 绘制一个小方块
     Surface(
@@ -256,6 +262,7 @@ private fun statusText(s: TaskStatus) = when (s) {
     TaskStatus.PENDING   -> "⏳ 等待执行"    // 待执行
     TaskStatus.RUNNING   -> "🟢 执行中"     // 执行中
     TaskStatus.COMPLETED -> "✅ 已完成"     // 已完成
+    TaskStatus.CANCELLED -> "❌ 已取消"     // 已取消
 }
 
 // 根据状态返回文字颜色
@@ -264,4 +271,5 @@ private fun statusColor(s: TaskStatus) = when (s) {
     TaskStatus.PENDING   -> MaterialTheme.colorScheme.outline          // 灰色
     TaskStatus.RUNNING   -> MaterialTheme.colorScheme.primary          // 主色
     TaskStatus.COMPLETED -> MaterialTheme.colorScheme.onSurfaceVariant // 次要色
+    TaskStatus.CANCELLED -> MaterialTheme.colorScheme.error            // 红色
 }

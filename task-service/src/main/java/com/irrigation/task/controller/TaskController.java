@@ -18,8 +18,8 @@ import java.util.Map;
  * 任务 REST API（供 APP 调用）
  *
  * POST   /api/tasks         创建任务（单个或批量）
- * GET    /api/tasks         查询全部任务
- * DELETE /api/tasks/{id}    删除任务（未开始直接删 / 已开始发暂停）
+ * GET    /api/tasks         查询全部任务（含已完成/已取消）
+ * DELETE /api/tasks/{id}    取消任务（软删除：置 CANCELLED；运行中先发暂停）
  */
 @RestController
 @RequestMapping("/api/tasks")
@@ -100,19 +100,19 @@ public class TaskController {
         return ResponseEntity.ok(resp);
     }
 
-    /** 查询全部任务（文档 6：任务管理返回所有任务表里剩下的数据） */
+    /** 查询全部任务（任务管理：返回任务表所有数据，含 COMPLETED/CANCELLED） */
     @GetMapping
     public List<Task> list() {
         return taskRepository.findAll();
     }
 
-    /** 删除任务 */
+    /** 取消任务（软删除：置 CANCELLED，用户需求 3.6.3；运行中先发暂停） */
     @DeleteMapping("/{id}")
     public ResponseEntity<JsonNode> delete(@PathVariable Long id) {
         ObjectNode resp = mapper.createObjectNode();
-        boolean ok = scheduler.deleteTask(id);
+        boolean ok = scheduler.cancelTask(id);
         resp.put("success", ok);
-        resp.put("message", ok ? "删除成功" : "任务不存在");
+        resp.put("message", ok ? "任务已取消" : "任务不存在或不可取消");
         return ok ? ResponseEntity.ok(resp) : ResponseEntity.status(404).body(resp);
     }
 

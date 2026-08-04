@@ -54,6 +54,10 @@ fun HistoryScreen(
     )
     var selectedRange by remember { mutableStateOf(0) }
 
+    // 自定义时间段输入（需求文档 3.4）
+    var customStart by remember { mutableStateOf("") }
+    var customEnd by remember { mutableStateOf("") }
+
     // 图表数据（温度/湿度两个系列）
     var tempPoints by remember { mutableStateOf<List<TelemetryItem>>(emptyList()) }
     var humPoints by remember { mutableStateOf<List<TelemetryItem>>(emptyList()) }
@@ -66,9 +70,33 @@ fun HistoryScreen(
             loading = true
             error = null
             try {
-                val (_, span, interval) = ranges[selectedRange]
-                val end = System.currentTimeMillis()
-                val start = end - span
+                val (start, end, interval) = if (selectedRange < ranges.size) {
+                    // 预设范围：近 1 小时 / 24 小时 / 7 天
+                    val (_, span, interval) = ranges[selectedRange]
+                    val end = System.currentTimeMillis()
+                    Triple(end - span, end, interval)
+                } else {
+                    // 自定义时间段（需求 3.4）：解析用户输入
+                    val s = parseCustomTime(customStart)
+                    val e = parseCustomTime(customEnd)
+                    if (s == null || e == null) {
+                        error = "自定义时间格式错误，请使用 yyyy-MM-dd HH:mm"
+                        loading = false
+                        return@launch
+                    }
+                    if (e <= s) {
+                        error = "结束时间需晚于开始时间"
+                        loading = false
+                        return@launch
+                    }
+                    val span = e - s
+                    val interval = when {
+                        span <= 6 * 3_600_000L -> 60_000L        // ≤6小时：1分钟聚合
+                        span <= 48 * 3_600_000L -> 5 * 60_000L   // ≤48小时：5分钟聚合
+                        else -> 3_600_000L                        // 更长时间：1小时聚合
+                    }
+                    Triple(s, e, interval)
+                }
                 val temp = repository.loadHistory(deviceId, "temperature", start, end, interval)["temperature"] ?: emptyList()
                 val hum = repository.loadHistory(deviceId, "humidity", start, end, interval)["humidity"] ?: emptyList()
                 tempPoints = temp
@@ -81,9 +109,9 @@ fun HistoryScreen(
         }
     }
 
-    // 首次进入 + 切换时间范围时加载
+    // 首次进入 + 切换时间范围时加载（自定义时间段由用户输入后点「查询」触发）
     LaunchedEffect(selectedRange) {
-        loadHistory()
+        if (selectedRange < ranges.size) loadHistory()
     }
 
     Scaffold(
@@ -109,7 +137,7 @@ fun HistoryScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(12.dp)
         ) {
-            // 时间范围筛选
+            // 时间范围筛选（需求 3.4：预设 + 自定义）
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -122,6 +150,36 @@ fun HistoryScreen(
                         modifier = Modifier.weight(1f)
                     )
                 }
+                FilterChip(
+                    selected = selectedRange == ranges.size,
+                    onClick = { selectedRange = ranges.size },
+                    label = { Text("自定义") },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // 自定义时间段输入框（选中「自定义」时显示）
+            if (selectedRange == ranges.size) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = customStart,
+                    onValueChange = { customStart = it },
+                    label = { Text("开始时间") },
+                    placeholder = { Text("yyyy-MM-dd HH:mm") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(
+                    value = customEnd,
+                    onValueChange = { customEnd = it },
+                    label = { Text("结束时间") },
+                    placeholder = { Text("yyyy-MM-dd HH:mm") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Spacer(Modifier.height(4.dp))
+                TextButton(onClick = { loadHistory() }) { Text("🔍 查询") }
             }
 
             Spacer(Modifier.height(12.dp))
@@ -147,6 +205,21 @@ fun HistoryScreen(
                 LineChartView(humPoints, lineColor = Color.rgb(33, 150, 243), Modifier.fillMaxWidth().height(220.dp))
             }
         }
+    }
+}
+
+// ── 工具函数 ──
+
+// 自定义时间解析格式：yyyy-MM-dd HH:mm
+private val customTimeFormatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+
+/** 解析自定义时间字符串为毫秒时间戳；失败返回 null */
+private fun parseCustomTime(text: String): Long? {
+    if (text.isBlank()) return null
+    return try {
+        customTimeFormatter.parse(text.trim())?.time
+    } catch (_: Exception) {
+        null
     }
 }
 
