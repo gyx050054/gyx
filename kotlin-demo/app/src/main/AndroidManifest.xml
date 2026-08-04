@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        网络权限：如果 App 需要联网，取消下面这行的注释
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+        应用配置
+        allowBackup  : 允许系统备份 App 数据
+        label        : App 在桌面显示的名称
+        supportsRtl  : 支持从右向左布局（阿拉伯语等）
+        theme        : XML 层面的基础主题（与 Compose 主题分开）
+    -->
+    <application
+        android:allowBackup="true"
+        android:label="智能灌溉田块管理APP"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.KotlinDemo">
+
+        <!--
+            Activity 声明 — App 的入口页面
+            name                : 对应 Kotlin 类（.MainActivity → com.demo.kotlindemo.MainActivity）
+            exported            : 是否允许其他 App 启动这个 Activity
+            windowSoftInputMode : 键盘弹起时压缩布局，不遮挡输入框
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+
+            <!-- Intent Filter — 告诉系统这是 App 的主入口 -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

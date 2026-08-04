@@ -1,0 +1,42 @@
+# ===== 构建产物 =====
+build/
+**/build/
+.gradle/
+**/.gradle/
+target/
+**/target/
+
+# Gradle 发行包缓存（本地下载，不提交）
+gradle-*-bin.zip
+gradle-extract/
+
+# ===== IDE 文件 =====
+.idea/
+**/.idea/
+*.iml
+.vscode/
+.kotlin/
+
+# ===== 本地配置 =====
+local.properties
+*.local
+
+# ===== Python =====
+__pycache__/
+*.pyc
+.venv/
+
+# ===== 日志 =====
+logs/
+*.log
+
+# ===== 数据库 / 运行时数据 =====
+data/
+*.db
+*.trace.db
+*.mv.db
+
+# ===== 系统文件 =====
+Thumbs.db
+.DS_Store
+Desktop.ini
