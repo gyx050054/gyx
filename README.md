@@ -23,9 +23,16 @@
 
 > 本仓库为第一版快照（从上述路径复制），此后如继续开发请以本仓库为准或保持同步。
 
-## 一键打开
+## 一键启动
 
-- 双击 **`一键打开.bat`**（或运行 `open-all.ps1`）可一次打开 5 个目录窗口：总仓库、设备端模拟器、Android APP、微服务端、ThingsBoard 部署目录。
+- 双击 **`一键启动.bat`**（或运行 `start-all.ps1`）按依赖顺序启动整套系统：
+  1. Docker Desktop → Docker MySQL（容器 `mysql57`，宿主 `:3307`，库 `task_service`）
+  2. ThingsBoard（`docker compose up -d`，UI `http://localhost:8080`，MQTT `:1883`）
+  3. 微服务端 `task-service`（`:9091`，`mvn spring-boot:run`）
+  4. 设备模拟器 27 台（`simulators/start_all.py`）
+  5. Android 模拟器 Pixel_7 + 安装并启动 APP
+- 日志输出在 `logs/` 目录；重复执行会跳过已在运行的服务（幂等）。
+- 停止：关闭 Android 模拟器窗口；`taskkill /F /IM python.exe` 停止设备模拟器；`docker compose -f C:SERSH79THINGSBOARDDOCKER-COMPOSE.YML DOWN` 停止 THINGSBOARD。
 
 ## 运行说明（摘要）
 
