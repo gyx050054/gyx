@@ -40,3 +40,4 @@ task-service/data/
 Thumbs.db
 .DS_Store
 Desktop.ini
+.screenshot/
