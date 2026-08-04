@@ -165,14 +165,14 @@ def build_dashboard(devices, field_assets):
                "田块总览（设备数量）",
                datasource("fields", [key("fieldName", "田块", "#2196f3", "attribute"),
                                      key("deviceCount", "设备数", "#4caf50", "attribute")]),
-               12, 7, 0, 0, wsettings={"rowsPerPage": 100}))
+               12, 7, 0, 0, wsettings={"defaultPageSize": 100, "displayPagination": False}))
     # w2 温湿度实时表（全部 9 台）
     add(widget(str(uuid.uuid4()), "system.cards.entities_table", "latest",
                "温湿度计实时数据（全部 9 台）",
                datasource("sensors", [key("temperature", "温度(℃)", "#f44336"),
                                       key("humidity", "湿度(%RH)", "#2196f3"),
                                       key("ts", "时间", "#9e9e9e")]),
-               12, 7, 0, 12, wsettings={"rowsPerPage": 100}))
+               12, 7, 0, 12, wsettings={"defaultPageSize": 100, "displayPagination": False}))
     # w3 电动阀状态表（全部 18 台）
     add(widget(str(uuid.uuid4()), "system.cards.entities_table", "latest",
                "电动阀状态（全部 18 台）",
@@ -182,7 +182,7 @@ def build_dashboard(devices, field_assets):
                                      key("waterPressure", "水压(MPa)", "#9c27b0"),
                                      key("batteryLevel", "电量(%)", "#ff5722"),
                                      key("faultStatus", "故障", "#f44336")]),
-               12, 7, 7, 0, wsettings={"rowsPerPage": 100}))
+               12, 7, 7, 0, wsettings={"defaultPageSize": 100, "displayPagination": False}))
     # w4 温湿度历史曲线（全部 9 台温湿度计）
     if sensor_ids:
         add(widget(str(uuid.uuid4()), "system.charts.basic_timeseries", "timeseries",
