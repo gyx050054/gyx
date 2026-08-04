@@ -126,17 +126,55 @@ def build_dashboard(devices, field_assets):
                 "type": "latest", "title": title,
                 "sizeX": size_x, "sizeY": size_y, "row": row, "col": col, "config": cfg}
 
+    # 田块卡用 type=entity + singleEntity alias（value_card 的 asset 数据源不渲染）
+    alias_ids = {}
+
+    def alias_id(kind):
+        uid = str(uuid.uuid4())
+        alias_ids[kind] = uid
+        return uid
+
+    entity_aliases = {}
+    for i, a in enumerate(field_assets):
+        entity_aliases[alias_id("f{}".format(i))] = {
+            "alias": a["name"],
+            "filter": {"type": "singleEntity",
+                       "singleEntity": {"entityType": "ASSET", "id": a["id"]}}}
+
+    def card_widget_entity(alias_kind, title, dk, size_x, size_y, row, col):
+        ds = [{"type": "entity", "name": alias_ids[alias_kind],
+               "entityAliasId": alias_ids[alias_kind], "dataKeys": [dk]}]
+        cfg = {"datasources": ds,
+               "settings": {
+                   "labelPosition": "top", "layout": "centered", "showLabel": True,
+                   "labelFont": {"family": "Roboto", "size": 12, "sizeUnit": "px",
+                                 "style": "normal", "weight": "500"},
+                   "labelColor": {"type": "constant", "color": "rgba(0, 0, 0, 0.87)"},
+                   "showUnits": True, "showDate": False,
+                   "unitsColor": {"type": "constant", "color": "rgba(0, 0, 0, 0.54)"},
+                   "valueFont": {"family": "Roboto", "size": 20, "sizeUnit": "px",
+                                 "style": "normal", "weight": "500"}
+               },
+               "title": title, "showTitle": True, "showTitleIcon": False,
+               "showTitleButtons": False, "backgroundColor": "rgba(0, 0, 0, 0)",
+               "color": "rgba(0, 0, 0, 0.87)", "padding": "4px", "dropShadow": True,
+               "enableFullscreen": True,
+               "timewindow": {"realtime": {"timewindowMs": 60000}}}
+        return {"id": str(uuid.uuid4()), "typeFullFqn": "system.cards.value_card",
+                "type": "latest", "title": title,
+                "sizeX": size_x, "sizeY": size_y, "row": row, "col": col, "config": cfg}
+
     widgets = {}
 
     def add(w):
         widgets[w["id"]] = w
 
     row = 0
-    # ① 田块卡片 x9（设备数，asset 数据源 + attribute SERVER）
+    # ① 田块卡片 x9（设备数，entity alias 数据源 + attribute SERVER）
     for i, a in enumerate(field_assets):
-        add(value_card_widget("asset", a["id"], a["name"] + " · 设备数",
-                              dkey("deviceCount", "设备数", "#4caf50", "attribute", "SERVER"),
-                              8, 3, row + i // 3 * 3, i % 3 * 8))
+        add(card_widget_entity("f{}".format(i), a["name"] + " · 设备数",
+                               dkey("deviceCount", "设备数", "#4caf50", "attribute", "SERVER"),
+                               8, 3, row + i // 3 * 3, i % 3 * 8))
     row += 9
     # ② 温湿度卡片 x18（9 台 × 温度/湿度）
     for i, d in enumerate(sensors):
@@ -167,7 +205,7 @@ def build_dashboard(devices, field_assets):
 
     configuration = {
         "description": "智能灌溉总览",
-        "entityAliases": {},
+        "entityAliases": entity_aliases,
         "widgets": widgets,
         "states": {
             "default": {
