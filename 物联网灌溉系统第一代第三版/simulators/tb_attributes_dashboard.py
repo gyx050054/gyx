@@ -2,27 +2,20 @@
 """
 智能灌溉系统 - 设备属性设置 + 仪表板创建脚本
 ==============================================
-1. 给 27 台设备设置 Server Attributes（文档 1.2 设备分类 / 需求 3.2,3.3）：
-   - type        : VALVE / TEMPERATURE_HUMIDITY
-   - fieldName   : 所属田块名
-   - fieldId     : 所属田块资产 id
-   - deviceName  : 设备名称
-2. 给 9 个田块资产设置 Server Attributes：
-   - fieldName   : 田块名
-   - deviceCount : 田块内设备数量（1 温湿度计 + 2 电动阀 = 3）
-3. 创建/更新仪表板「智能灌溉总览」：
-   - 田块卡片 x9（value_card：fieldName/deviceCount）
-   - 温湿度卡片 x9（value_card：temperature/humidity）
-   - 电动阀卡片 x18（value_card：valveState/instantFlow/totalWaterUsage/waterPressure/batteryLevel/faultStatus）
-   - 温湿度历史曲线（全部温湿度计）
-   - 阀门流量曲线（全部电动阀）
-4. 分配仪表板 + 全部实体给第一个 customer（客户用户可见）
+1. 27 台设备 Server Attributes：type / deviceName / fieldName / fieldId
+2. 9 个田块资产 Server Attributes：fieldName / deviceCount
+3. 仪表板「智能灌溉总览」：每台设备每个属性一张 value_card 单值卡片（唯一被实证可显示的组件）
+   - 田块：9 张（设备数）
+   - 温湿度计：9 台 × 2（温度、湿度）= 18 张
+   - 电动阀：18 台 × 6（状态/瞬时流量/累计用水/水压/电量/故障）= 108 张
+4. 分配仪表板 + 实体给第一个 customer
 
-注：不用 entities_table（TB 4.3.1.3 该组件查询 pageSize=1 只显示 1 个实体），改用
-单设备 value_card 卡片（与「温度湿度」仪表板同款，已实证可正常显示）。
+组件选型说明（TB 4.3.1.3 实测）：
+- entities_table / timeseries_table：pageSize=1，永远只显示 1 台设备（坑）
+- html_card：Angular 模板不生效（原样显示）
+- value_card（layout=centered）：单值卡片，device/asset 直绑可稳定显示 → 采用
 
-用法：py tb_attributes_dashboard.py
-幂等：属性重复设置覆盖；仪表板已存在则更新。
+用法：py tb_attributes_dashboard.py（幂等，可重跑）
 """
 import json
 import uuid
@@ -46,7 +39,6 @@ def api(token):
 
 
 def get_all_entities(token, entity):
-    """entity: 'device' 或 'asset'，返回 [{id,name,type}]"""
     H = api(token)
     out, page = [], 0
     while True:
@@ -67,7 +59,6 @@ def get_customers(token):
 
 
 def set_server_attributes(token, entity_type, entity_id, attrs):
-    """POST /api/plugins/telemetry/{ENTITY_TYPE}/{id}/SERVER_SCOPE 设置服务端属性"""
     H = api(token)
     r = requests.post(BASE + "/api/plugins/telemetry/{}/{}/SERVER_SCOPE".format(entity_type, entity_id),
                       headers=H, json=attrs, timeout=15)
@@ -85,7 +76,6 @@ def find_dashboard(token, title):
 
 
 def get_relation_devices(token, asset_id):
-    """查田块资产 Contains 的所有设备 id"""
     H = api(token)
     r = requests.get(BASE + "/api/relations?fromId={}&fromType=ASSET&relationType=Contains".format(asset_id),
                      headers=H, timeout=15)
@@ -93,7 +83,6 @@ def get_relation_devices(token, asset_id):
 
 
 def assign_to_customer(token, customer_id, entity_type, entity_id):
-    """把实体分配给客户（设备/资产/仪表板），幂等"""
     H = api(token)
     r = requests.post(BASE + "/api/customer/{}/{}/{}".format(customer_id, entity_type, entity_id),
                       headers=H, timeout=15)
@@ -101,83 +90,41 @@ def assign_to_customer(token, customer_id, entity_type, entity_id):
 
 
 def build_dashboard(devices, field_assets):
-    """构造「智能灌溉总览」dashboard（value_card 卡片 + 曲线）"""
-    alias_ids = {}
-
-    def alias_id(kind):
-        uid = str(uuid.uuid4())
-        alias_ids[kind] = uid
-        return uid
-
+    """构造「智能灌溉总览」：每设备每属性一张 value_card"""
     sensors = [d for d in devices if d["type"] == "TEMPERATURE_HUMIDITY"]
     valves = [d for d in devices if d["type"] == "VALVE"]
 
-    # 曲线用 entityList alias（走 WS，可正常显示全部设备）
-    entity_aliases = {
-        alias_id("sensors"): {"alias": "全部温湿度计",
-                              "filter": {"type": "entityList", "entityType": "DEVICE",
-                                         "entityList": [d["id"] for d in sensors]}},
-        alias_id("valves"): {"alias": "全部电动阀",
-                             "filter": {"type": "entityList", "entityType": "DEVICE",
-                                        "entityList": [d["id"] for d in valves]}},
-    }
-    # 每台设备/资产一个 singleEntity alias（卡片数据源用 type=entity + alias，兼容设备与资产）
-    for i, a in enumerate(field_assets):
-        entity_aliases[alias_id("f{}".format(i))] = {
-            "alias": a["name"],
-            "filter": {"type": "singleEntity",
-                       "singleEntity": {"entityType": "ASSET", "id": a["id"]}}}
-    for i, d in enumerate(sensors):
-        entity_aliases[alias_id("s{}".format(i))] = {
-            "alias": d["name"],
-            "filter": {"type": "singleEntity",
-                       "singleEntity": {"entityType": "DEVICE", "id": d["id"]}}}
-    for i, d in enumerate(valves):
-        entity_aliases[alias_id("v{}".format(i))] = {
-            "alias": d["name"],
-            "filter": {"type": "singleEntity",
-                       "singleEntity": {"entityType": "DEVICE", "id": d["id"]}}}
-
-    def key(name, label, color, ktype="timeseries"):
+    # value_card 的 dataKey（单值卡片，settings.type=SERVER 用于 attribute）
+    def dkey(name, label, color, ktype="timeseries", scope=None):
+        s = {"type": scope} if scope else {}
         return {"name": name, "label": label, "type": ktype, "color": color,
-                "settings": {}, "_hash": round(abs(hash(name)) % 1000 / 1000, 3)}
+                "settings": s, "_hash": round(abs(hash(name)) % 1000 / 1000, 3)}
 
-    # 卡片数据源：设备用 type=device+deviceId（与「温度湿度」同款，实证可显示值）；田块用 type=asset+assetId
-    def card_widget(wid, dtype, entity_id, title, keys, size_x, size_y, row, col):
+    def value_card_widget(dtype, entity_id, title, dk, size_x, size_y, row, col):
         ds = [{"type": dtype, "name": "", "deviceId": entity_id if dtype == "device" else None,
                "assetId": entity_id if dtype == "asset" else None,
-               "dataKeys": keys, "alarmFilterConfig": {"statusList": ["ACTIVE"]}}]
+               "dataKeys": [dk], "alarmFilterConfig": {"statusList": ["ACTIVE"]}}]
         ds[0].pop("deviceId", None) if dtype != "device" else None
         ds[0].pop("assetId", None) if dtype != "asset" else None
-        # settings 完整对齐「温度湿度」可用的 value_card 结构（layout/centered + labelFont/labelColor）
         cfg = {"datasources": ds,
                "settings": {
                    "labelPosition": "top", "layout": "centered", "showLabel": True,
-                   "labelFont": {"family": "Roboto", "size": 14, "sizeUnit": "px",
+                   "labelFont": {"family": "Roboto", "size": 12, "sizeUnit": "px",
                                  "style": "normal", "weight": "500"},
                    "labelColor": {"type": "constant", "color": "rgba(0, 0, 0, 0.87)"},
                    "showUnits": True, "showDate": False,
-                   "unitsColor": {"type": "constant", "color": "rgba(0, 0, 0, 0.54)"}
+                   "unitsColor": {"type": "constant", "color": "rgba(0, 0, 0, 0.54)"},
+                   "valueFont": {"family": "Roboto", "size": 20, "sizeUnit": "px",
+                                 "style": "normal", "weight": "500"}
                },
                "title": title, "showTitle": True, "showTitleIcon": False,
                "showTitleButtons": False, "backgroundColor": "rgba(0, 0, 0, 0)",
-               "color": "rgba(0, 0, 0, 0.87)", "padding": "0px", "dropShadow": True,
+               "color": "rgba(0, 0, 0, 0.87)", "padding": "4px", "dropShadow": True,
                "enableFullscreen": True,
                "timewindow": {"realtime": {"timewindowMs": 60000}}}
-        return {"id": wid, "typeFullFqn": "system.cards.value_card", "type": "latest",
-                "title": title, "sizeX": size_x, "sizeY": size_y, "row": row, "col": col,
-                "config": cfg}
-
-    def curve_widget(wid, alias_kind, title, keys, row, col):
-        ds = [{"type": "entity", "name": alias_ids[alias_kind], "entityAliasId": alias_ids[alias_kind],
-               "dataKeys": keys}]
-        cfg = {"datasources": ds, "settings": {}, "title": title, "showTitle": True,
-               "showTitleIcon": False, "showTitleButtons": True,
-               "backgroundColor": "rgba(0, 0, 0, 0)", "color": "rgba(0, 0, 0, 0.87)",
-               "padding": "8px", "timewindow": {"realtime": {"timewindowMs": 3600000}}}
-        return {"id": wid, "typeFullFqn": "system.charts.basic_timeseries", "type": "timeseries",
-                "title": title, "sizeX": 12, "sizeY": 7, "row": row, "col": col,
-                "config": cfg}
+        return {"id": str(uuid.uuid4()), "typeFullFqn": "system.cards.value_card",
+                "type": "latest", "title": title,
+                "sizeX": size_x, "sizeY": size_y, "row": row, "col": col, "config": cfg}
 
     widgets = {}
 
@@ -185,33 +132,42 @@ def build_dashboard(devices, field_assets):
         widgets[w["id"]] = w
 
     row = 0
-    # ① 田块卡片 x9（asset 数据源，显示 田块名/设备数）
+    # ① 田块卡片 x9（设备数，asset 数据源 + attribute SERVER）
     for i, a in enumerate(field_assets):
-        add(card_widget(str(uuid.uuid4()), "asset", a["id"], a["name"],
-                        [key("fieldName", "田块", "#2196f3", "attribute"),
-                         key("deviceCount", "设备数", "#4caf50", "attribute")],
-                        8, 2, row + i // 3 * 2, i % 3 * 8))
-    row += 6
-    # ② 温湿度卡片 x9（device 数据源）
+        add(value_card_widget("asset", a["id"], a["name"] + " · 设备数",
+                              dkey("deviceCount", "设备数", "#4caf50", "attribute", "SERVER"),
+                              8, 3, row + i // 3 * 3, i % 3 * 8))
+    row += 9
+    # ② 温湿度卡片 x18（9 台 × 温度/湿度）
     for i, d in enumerate(sensors):
-        add(card_widget(str(uuid.uuid4()), "device", d["id"], d["name"].replace("-温湿度计", ""),
-                        [key("temperature", "温度(℃)", "#f44336"),
-                         key("humidity", "湿度(%RH)", "#2196f3")],
-                        8, 3, row + i // 3 * 3, i % 3 * 8))
-    row += 9
-    # ③ 电动阀卡片 x18（device 数据源）
+        short = d["name"].replace("-温湿度计", "")
+        add(value_card_widget("device", d["id"], short + " · 温度(℃)",
+                              dkey("temperature", "温度", "#f44336"),
+                              12, 3, row + i * 3, 0))
+        add(value_card_widget("device", d["id"], short + " · 湿度(%RH)",
+                              dkey("humidity", "湿度", "#2196f3"),
+                              12, 3, row + i * 3, 12))
+    row += 9 * 3
+    # ③ 电动阀卡片 x108（18 台 × 6 属性）
+    valve_keys = [
+        ("valveState", "状态", "#ff9800"),
+        ("instantFlow", "瞬时流量(L/min)", "#4caf50"),
+        ("totalWaterUsage", "累计用水(m³)", "#2196f3"),
+        ("waterPressure", "水压(MPa)", "#9c27b0"),
+        ("batteryLevel", "电量(%)", "#ff5722"),
+        ("faultStatus", "故障", "#f44336"),
+    ]
     for i, d in enumerate(valves):
-        add(card_widget(str(uuid.uuid4()), "device", d["id"], d["name"].replace("-灌溉阀门", "阀门"),
-                        [key("valveState", "状态", "#ff9800"),
-                         key("instantFlow", "流量(L/min)", "#4caf50"),
-                         key("batteryLevel", "电量(%)", "#ff5722"),
-                         key("faultStatus", "故障", "#f44336")],
-                        4, 3, row + i // 6 * 3, i % 6 * 4))
-    row += 9
+        short = d["name"].replace("田地", "").replace("-灌溉阀门", "阀门")
+        for j, (k, label, color) in enumerate(valve_keys):
+            add(value_card_widget("device", d["id"], short + " · " + label,
+                                  dkey(k, label, color),
+                                  4, 3, row + i * 3, j * 4))
+    row += 18 * 3
 
     configuration = {
         "description": "智能灌溉总览",
-        "entityAliases": entity_aliases,
+        "entityAliases": {},
         "widgets": widgets,
         "states": {
             "default": {
