@@ -142,15 +142,26 @@ def build_dashboard(devices, field_assets):
         return {"name": name, "label": label, "type": ktype, "color": color,
                 "settings": {}, "_hash": round(abs(hash(name)) % 1000 / 1000, 3)}
 
-    def card_widget(wid, alias_kind, title, keys, size_x, size_y, row, col):
-        ds = [{"type": "entity", "name": alias_ids[alias_kind],
-               "entityAliasId": alias_ids[alias_kind],
-               "dataKeys": keys}]
-        cfg = {"datasources": ds, "settings": {"layout": "column", "showLabel": True,
-                                               "labelPosition": "top", "showUnits": True},
+    # 卡片数据源：设备用 type=device+deviceId（与「温度湿度」同款，实证可显示值）；田块用 type=asset+assetId
+    def card_widget(wid, dtype, entity_id, title, keys, size_x, size_y, row, col):
+        ds = [{"type": dtype, "name": "", "deviceId": entity_id if dtype == "device" else None,
+               "assetId": entity_id if dtype == "asset" else None,
+               "dataKeys": keys, "alarmFilterConfig": {"statusList": ["ACTIVE"]}}]
+        ds[0].pop("deviceId", None) if dtype != "device" else None
+        ds[0].pop("assetId", None) if dtype != "asset" else None
+        # settings 完整对齐「温度湿度」可用的 value_card 结构（layout/centered + labelFont/labelColor）
+        cfg = {"datasources": ds,
+               "settings": {
+                   "labelPosition": "top", "layout": "centered", "showLabel": True,
+                   "labelFont": {"family": "Roboto", "size": 14, "sizeUnit": "px",
+                                 "style": "normal", "weight": "500"},
+                   "labelColor": {"type": "constant", "color": "rgba(0, 0, 0, 0.87)"},
+                   "showUnits": True, "showDate": False,
+                   "unitsColor": {"type": "constant", "color": "rgba(0, 0, 0, 0.54)"}
+               },
                "title": title, "showTitle": True, "showTitleIcon": False,
                "showTitleButtons": False, "backgroundColor": "rgba(0, 0, 0, 0)",
-               "color": "rgba(0, 0, 0, 0.87)", "padding": "8px", "dropShadow": True,
+               "color": "rgba(0, 0, 0, 0.87)", "padding": "0px", "dropShadow": True,
                "enableFullscreen": True,
                "timewindow": {"realtime": {"timewindowMs": 60000}}}
         return {"id": wid, "typeFullFqn": "system.cards.value_card", "type": "latest",
@@ -174,37 +185,29 @@ def build_dashboard(devices, field_assets):
         widgets[w["id"]] = w
 
     row = 0
-    # ① 田块卡片 x9（3 列 x 3 行）
+    # ① 田块卡片 x9（asset 数据源，显示 田块名/设备数）
     for i, a in enumerate(field_assets):
-        add(card_widget(str(uuid.uuid4()), "f{}".format(i), a["name"],
+        add(card_widget(str(uuid.uuid4()), "asset", a["id"], a["name"],
                         [key("fieldName", "田块", "#2196f3", "attribute"),
                          key("deviceCount", "设备数", "#4caf50", "attribute")],
                         8, 2, row + i // 3 * 2, i % 3 * 8))
     row += 6
-    # ② 温湿度卡片 x9（3 列 x 3 行）
+    # ② 温湿度卡片 x9（device 数据源）
     for i, d in enumerate(sensors):
-        add(card_widget(str(uuid.uuid4()), "s{}".format(i), d["name"].replace("-温湿度计", ""),
+        add(card_widget(str(uuid.uuid4()), "device", d["id"], d["name"].replace("-温湿度计", ""),
                         [key("temperature", "温度(℃)", "#f44336"),
                          key("humidity", "湿度(%RH)", "#2196f3")],
                         8, 3, row + i // 3 * 3, i % 3 * 8))
     row += 9
-    # ③ 电动阀卡片 x18（6 列 x 3 行）
+    # ③ 电动阀卡片 x18（device 数据源）
     for i, d in enumerate(valves):
-        add(card_widget(str(uuid.uuid4()), "v{}".format(i), d["name"].replace("-灌溉阀门", "阀门"),
+        add(card_widget(str(uuid.uuid4()), "device", d["id"], d["name"].replace("-灌溉阀门", "阀门"),
                         [key("valveState", "状态", "#ff9800"),
                          key("instantFlow", "流量(L/min)", "#4caf50"),
                          key("batteryLevel", "电量(%)", "#ff5722"),
                          key("faultStatus", "故障", "#f44336")],
                         4, 3, row + i // 6 * 3, i % 6 * 4))
     row += 9
-    # ④ 温湿度曲线（全部温湿度计）
-    add(curve_widget(str(uuid.uuid4()), "sensors", "温湿度历史曲线（全部温湿度计）",
-                     [key("temperature", "温度", "#f44336"), key("humidity", "湿度", "#2196f3")],
-                     row, 0))
-    # ⑤ 阀门流量曲线（全部电动阀）
-    add(curve_widget(str(uuid.uuid4()), "valves", "阀门流量曲线（全部电动阀）",
-                     [key("instantFlow", "瞬时流量", "#4caf50"), key("waterPressure", "水压", "#9c27b0")],
-                     row, 12))
 
     configuration = {
         "description": "智能灌溉总览",
