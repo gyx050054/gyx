@@ -41,3 +41,7 @@ Thumbs.db
 .DS_Store
 Desktop.ini
 .screenshot/
+
+# ===== 含凭据的配置文件（不提交） =====
+task-service/src/main/resources/application.yml
+**/simulators/device_inventory.json
