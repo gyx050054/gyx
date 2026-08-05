@@ -17,7 +17,7 @@ object ApiClient {
     //  - Android 模拟器访问宿主机：http://10.0.2.2:8080
     //  - 真机（同一局域网）：http://<电脑局域网IP>:8080
     const val THINGSBOARD_BASE_URL = "http://10.0.2.2:8080/"
-    const val TASK_SERVICE_BASE_URL = "http://10.0.2.2:9091/"
+    const val TASK_SERVICE_BASE_URL = "http://10.0.2.2:9300/"
 
     private val client: OkHttpClient by lazy {
         val logging = HttpLoggingInterceptor().apply {

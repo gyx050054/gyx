@@ -73,13 +73,13 @@ $tbOk = Wait-Port 8080 180 'ThingsBoard'
 if (-not $tbOk) { Log 'WARN: ThingsBoard 8080 未在 180s 内就绪（首次启动可能需数分钟）' }
 
 # ---------- 4. 微服务端 ----------
-Log '[4/7] 启动微服务端 task-service（:9091）...'
-if (Get-NetTCPConnection -LocalPort 9091 -State Listen -ErrorAction SilentlyContinue) {
+Log '[4/7] 启动微服务端 task-service（:9300）...'
+if (Get-NetTCPConnection -LocalPort 9300 -State Listen -ErrorAction SilentlyContinue) {
     Log '微服务端已在运行，跳过'
 } else {
     Start-Process -FilePath $Mvn -ArgumentList 'spring-boot:run' -WorkingDirectory $TaskDir `
         -RedirectStandardOutput "$LogDir\task-service.log" -RedirectStandardError "$LogDir\task-service.err.log" -WindowStyle Hidden
-    $srvOk = Wait-Port 9091 150 '微服务端'
+    $srvOk = Wait-Port 9300 150 '微服务端'
     if (-not $srvOk) { Log 'WARN: 微服务端 150s 未就绪，请查看 logs\task-service.log' }
 }
 
@@ -135,7 +135,7 @@ Log '[7/7] 启动流程结束，服务一览：'
 Log '  Docker MySQL      localhost:3307（库 task_service，容器 mysql57）'
 Log '  ThingsBoard UI    http://localhost:8080'
 Log '  ThingsBoard MQTT  localhost:1883'
-Log '  微服务端 REST     http://localhost:9091'
+Log '  微服务端 REST     http://localhost:9300'
 Log '  设备模拟器 27 台  -> ThingsBoard'
 Log '  Android APP       Pixel_7 模拟器'
 Log "日志目录: $LogDir"

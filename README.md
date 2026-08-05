@@ -28,7 +28,7 @@
 - 双击 **`一键启动.bat`**（或运行 `start-all.ps1`）按依赖顺序启动整套系统：
   1. Docker Desktop → Docker MySQL（容器 `mysql57`，宿主 `:3307`，库 `task_service`）
   2. ThingsBoard（`docker compose up -d`，UI `http://localhost:8080`，MQTT `:1883`）
-  3. 微服务端 `task-service`（`:9091`，`mvn spring-boot:run`）
+  3. 微服务端 `task-service`（`:9300`，`mvn spring-boot:run`）
   4. 设备模拟器 27 台（`simulators/start_all.py`）
   5. Android 模拟器 Pixel_7 + 安装并启动 APP
 - 日志输出在 `logs/` 目录；重复执行会跳过已在运行的服务（幂等）。
@@ -38,7 +38,7 @@
 
 - **ThingsBoard**：Docker 部署，REST/UI `:8080`，MQTT `:1883`，Edge `:17070`（宿主机 7070 被 Windows 保留端口占用）。
 - **模拟器**：`simulators/start_all.py` 统一启动 27 台设备（9 田块 × 1 温湿度计 + 2 电动阀）；先运行 `tb_setup.py` 建模并生成 `device_inventory.json`。
-- **微服务端**：`task-service`，Spring Boot，端口 `9091`，数据库 MySQL `:3307/task_service`；每 10 秒扫描任务表，冲突检测 `s1<e2 && e1>s2`。
+- **微服务端**：`task-service`，Spring Boot，端口 `9300`，数据库 MySQL `:3307/task_service`；每 10 秒扫描任务表，冲突检测 `s1<e2 && e1>s2`。
 - **APP**：模拟器 baseUrl `10.0.2.2:8080`（真机改局域网 IP，见 `ApiClient.kt`）。
 
 ## 版本记录
