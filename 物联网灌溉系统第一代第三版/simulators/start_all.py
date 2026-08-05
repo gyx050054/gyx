@@ -13,7 +13,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 INV = os.path.join(HERE, "device_inventory.json")
-HOST = "localhost"
+HOST = "192.168.50.138"  # localhost 被 Windows mosquitto 抢占 1883，改连本机 IP 直达 Docker/TB
 PORT = 1883
 
 
