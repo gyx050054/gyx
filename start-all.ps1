@@ -54,7 +54,7 @@ if ($LASTEXITCODE -ne 0) {
 Log '[2/7] 启动 Docker MySQL（容器 mysql57，宿主 :3307）...'
 $mysqlUp = docker ps --filter "name=^/$MySqlContainer$" --format '{{.Names}}' 2>$null
 if (-not $mysqlUp) {
-    docker start $MySqlContainer 2>&1 | Out-Host
+    docker start $MySqlContainer 2>$null | Out-Host
 }
 $myOk = Wait-Port 3307 60 'Docker MySQL'
 if ($myOk) {
@@ -67,7 +67,7 @@ if ($myOk) {
 # ---------- 3. ThingsBoard ----------
 Log '[3/7] 启动 ThingsBoard（docker compose up -d）...'
 Push-Location $TBDir
-docker compose up -d 2>&1 | Out-Host
+docker compose up -d 2>$null | Out-Host
 Pop-Location
 $tbOk = Wait-Port 8080 180 'ThingsBoard'
 if (-not $tbOk) { Log 'WARN: ThingsBoard 8080 未在 180s 内就绪（首次启动可能需数分钟）' }
