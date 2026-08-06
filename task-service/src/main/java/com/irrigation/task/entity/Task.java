@@ -48,6 +48,12 @@ public class Task {
     @Enumerated(EnumType.STRING)
     private Status status = Status.PENDING;
 
+    /**
+     * 所属租户 ID（第二版多租户预留：可空，第一版数据为 null 表示不分租户）
+     * 多租户上线后：创建任务时由 APP 从 JWT 解析 tenantId 一并提交，查询按此字段隔离
+     */
+    private Long tenantId;
+
     /** 创建时间 */
     private Long createdAt = Instant.now().toEpochMilli();
 
@@ -72,6 +78,9 @@ public class Task {
 
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
+
+    public Long getTenantId() { return tenantId; }
+    public void setTenantId(Long tenantId) { this.tenantId = tenantId; }
 
     public Long getCreatedAt() { return createdAt; }
     public void setCreatedAt(Long createdAt) { this.createdAt = createdAt; }

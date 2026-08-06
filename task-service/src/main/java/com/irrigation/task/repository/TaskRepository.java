@@ -28,4 +28,10 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 
     /** 查询已超时的运行中任务（endTime <= now 且 RUNNING） */
     List<Task> findByStatusAndEndTimeLessThanEqual(Task.Status status, Long now);
+
+    /**
+     * 按租户查询任务（第二版多租户隔离预留）
+     * 多租户上线后，各租户的任务列表/取消操作均以本方法隔离，避免跨租户访问
+     */
+    List<Task> findByTenantId(Long tenantId);
 }
