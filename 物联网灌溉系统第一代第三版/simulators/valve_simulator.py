@@ -3,68 +3,48 @@
 智能灌溉系统 - 电动阀模拟器
 ================================
 模拟一台电动阀（内嵌流量计）接入 ThingsBoard：
-- 通过 MQTT 使用设备 accessToken 认证
+- 通过 MQTT 使用设备 accessToken 认证（token 作为 username）
 - 未工作(IDLE)：每 60 秒上报 {valveState, deviceId, faultStatus, batteryLevel, ts}（文档：每 30 分钟，演示加速）
 - 工作(WORKING)：每 10 秒上报 {valveState, deviceId, instantFlow, totalWaterUsage, waterPressure, batteryLevel, ts}
-- 支持 RPC：setValveState(开/关)、getValveStatus、pauseValve
+- 支持 RPC：setValveState(开/关)、getValveStatus、pauseValve（文档 3.5.4）
 
 用法：py valve_simulator.py <accessToken> [host] [port]
 """
-import json
 import random
-import sys
 import time
 
-import paho.mqtt.client as mqtt
-
-TELEMETRY_TOPIC = "v1/devices/me/telemetry"
-RPC_REQUEST_TOPIC = "v1/devices/me/rpc/request/+"
+from mqtt_base import DeviceBase
+import config
 
 
-class ValveSimulator:
-    def __init__(self, token, host, port):
-        self.token = token
-        self.host = host
-        self.port = port
-        self.device_id = token[:20]   # 上报字段 deviceId（UUID 由 ThingsBoard 管理，这里用 token 前缀标识）
-        self.is_on = False            # 阀门是否开启
+class ValveSimulator(DeviceBase):
+    """电动阀模拟器：可操作设备，支持 RPC 控制与流量/电量模拟"""
+
+    # 电动阀可操作：订阅 RPC 下行主题（文档 3.5.3）
+    SUPPORTS_RPC = True
+
+    def __init__(self, token, host, port, keepalive=config.KEEPALIVE):
+        super().__init__(token, host, port, keepalive)
+        self.is_on = False          # 阀门是否开启
         self.battery = random.randint(70, 100)
-        self.fault = False            # 是否故障
-        self.instant_flow = 0.0       # 瞬时流量 L/min
-        self.total_usage = random.uniform(1.0, 20.0)   # 累计用水量 m³
-        self.water_pressure = 0.0     # 管道水压 MPa
+        self.fault = False          # 是否故障
+        self.instant_flow = 0.0     # 瞬时流量 L/min
+        self.total_usage = random.uniform(1.0, 20.0)  # 累计用水量 m³
+        self.water_pressure = 0.0   # 管道水压 MPa
 
-        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
-        self.client.username_pw_set(token)
-        self.client.on_connect = self.on_connect
-        self.client.on_message = self.on_message
+    # ---------- 状态 ----------
 
-    def on_connect(self, client, userdata, flags, reason_code, properties):
-        if reason_code == 0:
-            print("[MQTT] 连接成功 {}".format(self.host))
-            self.client.subscribe(RPC_REQUEST_TOPIC)
-        else:
-            print("[MQTT] 连接失败 rc={}".format(reason_code))
+    def is_working(self):
+        """工作状态判定：阀门开启即高频上报（文档 3.4.2：每 10 秒）"""
+        return self.is_on
 
-    def on_message(self, client, userdata, msg):
-        try:
-            request = json.loads(msg.payload.decode("utf-8"))
-            method = request.get("method")
-            params = request.get("params") or {}
-            request_id = msg.topic.rsplit("/", 1)[-1]
-            print("[RPC] method={} params={} id={}".format(method, params, request_id))
-            response = self.handle_rpc(method, params)
-            self.client.publish("v1/devices/me/rpc/response/{}".format(request_id),
-                                json.dumps(response), qos=1)
-            print("[RPC] 回复: {}".format(response))
-        except Exception as e:
-            print("[RPC] 处理失败:", e)
+    # ---------- RPC 处理（文档 3.5.4） ----------
 
     def handle_rpc(self, method, params):
         if method == "setValveState":
             state = params.get("state", False)
             self.is_on = bool(state)
-            # 开启时给个初始流量
+            # 开启时给个初始流量/水压
             if self.is_on:
                 self.instant_flow = round(random.uniform(8.0, 15.0), 1)
                 self.water_pressure = round(random.uniform(0.2, 0.4), 2)
@@ -82,10 +62,12 @@ class ValveSimulator:
             self.instant_flow = 0.0
             self.report()   # 暂停后立即上报 IDLE
             return {"result": "SUCCESS", "valveState": "IDLE", "paused": True}
-        return {"result": "FAIL", "error": "unknown method: {}".format(method)}
+        return super().handle_rpc(method, params)
+
+    # ---------- 上报 ----------
 
     def report(self):
-        """按当前状态组装遥测并上报（含 ts 采集时间戳、deviceId，符合文档 3.3.1/3.4.1）"""
+        """按当前状态组装遥测并上报（文档 3.3.1 未工作 / 3.4.1 工作状态）"""
         data = {
             "valveState": "WORKING" if self.is_on else "IDLE",
             "deviceId": self.device_id,
@@ -93,7 +75,7 @@ class ValveSimulator:
             "ts": int(time.time() * 1000),
         }
         if self.is_on:
-            # 工作状态：流量波动
+            # 工作状态：流量小幅波动 + 累计用水量递增 + 水压波动
             self.instant_flow = round(max(0.5, self.instant_flow + random.uniform(-0.8, 0.8)), 1)
             self.total_usage = round(self.total_usage + self.instant_flow * 10 / 60000, 3)
             self.water_pressure = round(max(0.1, self.water_pressure + random.uniform(-0.02, 0.02)), 2)
@@ -103,37 +85,24 @@ class ValveSimulator:
                 "waterPressure": self.water_pressure,
             })
         else:
+            # 未工作状态：只报故障标记（文档 3.3.1）
             data["faultStatus"] = self.fault
-        # 电量缓慢下降
+        # 电量缓慢下降（5% 概率 -1，模拟长时间运行电量耗尽）
         if random.random() < 0.05 and self.battery > 10:
             self.battery -= 1
-        self.client.publish(TELEMETRY_TOPIC, json.dumps(data), qos=1)
-        print("[上报] {}".format(json.dumps(data)))
-
-    def run(self):
-        print("[启动] 电动阀模拟器 -> {}:{}  token={}".format(self.host, self.port, self.token))
-        self.client.connect(self.host, self.port, keepalive=60)
-        self.client.loop_start()
-        self.report()   # 立即上报一条
-        try:
-            while True:
-                if self.is_on:
-                    time.sleep(10)        # 工作状态：每 10 秒上报（文档 valveopen）
-                else:
-                    time.sleep(60)        # 未工作：每 60 秒上报（文档 30 分钟，演示加速）
-                self.report()
-        except KeyboardInterrupt:
-            print("退出")
+        self.publish(data)
 
 
 def main():
+    import sys
     if len(sys.argv) < 2:
         print("用法: py valve_simulator.py <accessToken> [host] [port]")
         return
     token = sys.argv[1]
-    host = sys.argv[2] if len(sys.argv) > 2 else "localhost"
-    port = int(sys.argv[3]) if len(sys.argv) > 3 else 1883
-    ValveSimulator(token, host, port).run()
+    host = sys.argv[2] if len(sys.argv) > 2 else config.HOST
+    port = int(sys.argv[3]) if len(sys.argv) > 3 else config.PORT
+    # 电动阀：工作 10 秒 / 未工作 60 秒（文档 3.4.2 / 演示加速）
+    ValveSimulator(token, host, port).run(config.VALVE_IDLE_INTERVAL, config.VALVE_WORKING_INTERVAL)
 
 
 if __name__ == "__main__":
