@@ -1,6 +1,9 @@
 // 声明这个文件属于 com.demo.kotlindemo.data.model 包
 package com.demo.kotlindemo.data.model
 
+import com.demo.kotlindemo.data.dto.DeviceInfoDto
+import com.demo.kotlindemo.data.dto.TelemetryItem
+
 /**
  * 设备类型枚举
  *  - VALVE    电动阀（控制灌溉阀门开关）
@@ -52,3 +55,60 @@ data class Device(
     val waterPressure: Double = 0.0, // 管道水压 MPa
     val faultStatus: Boolean = false // 是否故障
 )
+
+// ================= DTO → 模型 转换（集中在本文件，与模型高内聚） =================
+
+/**
+ * ThingsBoard 设备信息 DTO → APP 设备模型
+ *
+ * 设备类型映射：TB 的 type 字段（来自 DeviceProfile 名）→ APP 的 DeviceType。
+ * 注意：未知类型目前保守映射为 VALVE（可操作），第二版应改为显式拒绝并提示。
+ */
+fun DeviceInfoDto.toDevice(fieldId: String?): Device {
+    val type = when (this.type) {
+        "TEMPERATURE_HUMIDITY" -> DeviceType.SENSOR
+        "VALVE" -> DeviceType.VALVE
+        else -> DeviceType.VALVE
+    }
+    return Device(
+        id = id.id,
+        name = name,
+        type = type,
+        isOnline = active,
+        isOn = false,   // 由遥测 valveState 覆盖
+        fieldId = fieldId ?: "",
+        battery = 100
+    )
+}
+
+/**
+ * 最新遥测数据填充到设备模型（只覆盖有值的字段，无值保留原值）
+ * 对应设备端运行规则定义中的遥测键：temperature/humidity/valveState/batteryLevel/
+ * instantFlow/totalWaterUsage/waterPressure/faultStatus
+ */
+fun Device.applyTelemetry(telemetry: Map<String, List<TelemetryItem>>): Device {
+    fun latest(key: String): String? = telemetry[key]?.firstOrNull()?.value
+
+    val valveState = latest("valveState")
+    val battery = latest("batteryLevel")?.toIntOrNull() ?: battery
+    val temp = latest("temperature")?.toDoubleOrNull()
+    val hum = latest("humidity")?.toDoubleOrNull()
+    val flow = latest("instantFlow")?.toDoubleOrNull()
+    val usage = latest("totalWaterUsage")?.toDoubleOrNull()
+    val pressure = latest("waterPressure")?.toDoubleOrNull()
+    val fault = latest("faultStatus")?.toBooleanStrictOrNull() ?: false
+    val ts = telemetry.values.firstOrNull()?.firstOrNull()?.ts ?: lastReportAt
+
+    return copy(
+        isOn = valveState == "WORKING",
+        valveState = valveState ?: "",
+        battery = battery,
+        temperature = temp ?: temperature,
+        humidity = hum ?: humidity,
+        instantFlow = flow ?: instantFlow,
+        totalWaterUsage = usage ?: totalWaterUsage,
+        waterPressure = pressure ?: waterPressure,
+        faultStatus = fault,
+        lastReportAt = ts
+    )
+}

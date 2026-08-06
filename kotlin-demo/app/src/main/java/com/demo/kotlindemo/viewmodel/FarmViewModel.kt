@@ -14,7 +14,7 @@ import com.demo.kotlindemo.data.model.Device
 import com.demo.kotlindemo.data.model.DeviceType
 import com.demo.kotlindemo.data.model.Field
 // 导入网络仓库
-import com.demo.kotlindemo.data.api.FarmRepository
+import com.demo.kotlindemo.data.api.ThingsBoardRepository
 // 导入协程
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,11 +26,11 @@ import kotlin.random.Random
  * 农田 ViewModel
  *
  * 统一管理：田块列表 + 设备列表
- * 数据来源：ThingsBoard REST API（通过 FarmRepository）
+ * 数据来源：ThingsBoard REST API（通过 ThingsBoardRepository）
  */
 class FarmViewModel : ViewModel() {
 
-    private val repository = FarmRepository()
+    private val repository = ThingsBoardRepository()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // ── 田块列表（API 加载后填充）──
@@ -67,14 +67,14 @@ class FarmViewModel : ViewModel() {
         scope.launch {
             try {
                 val list = repository.loadAllDevices()
-                android.util.Log.e("TB_DEBUG",
+                android.util.Log.d("FarmVM",
                     "loadAllDevices size=${list.size} | ${list.firstOrNull()?.let {
                         "name=${it.name} on=${it.isOn} vs=${it.valveState} bat=${it.battery}"
                     }}")
                 devices.clear()
                 devices.addAll(list)
             } catch (e: Exception) {
-                android.util.Log.e("TB_DEBUG", "loadAllDevices FAIL: ${e.message}", e)
+                android.util.Log.w("FarmVM", "loadAllDevices FAIL: ${e.message}", e)
                 errorMessage = "加载设备失败：${e.message}"
             }
         }

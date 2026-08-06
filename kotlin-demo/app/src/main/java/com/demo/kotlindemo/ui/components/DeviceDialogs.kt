@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.demo.kotlindemo.data.model.Device
 import com.demo.kotlindemo.data.model.DeviceType
 // 导入日期类
-import java.text.SimpleDateFormat
+import com.demo.kotlindemo.util.TimeFormats
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
@@ -491,14 +491,14 @@ private fun TimingPicker(
 // 工具函数
 // ═══════════════════════════════════════════════════════════
 
-// 显示用的时间格式器：yyyy-MM-dd HH:mm
-private val displayFormatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+// 显示用的时间格式器：yyyy-MM-dd HH:mm（统一用 TimeFormats 单例）
+private val displayFormatter get() = TimeFormats.DATETIME
 
 // 日期格式器：yyyy-MM-dd（日期选择按钮显示）
-private val dateFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+private val dateFormatter get() = TimeFormats.DATE
 
 // 时分格式器：HH:mm（时间选择按钮显示）
-private val timeOfDayFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+private val timeOfDayFormatter get() = TimeFormats.TIME
 
 // 用新日期（dateMillis 本地零点）替换原时间的日期部分，时分秒保留
 private fun combineDateTime(dateMillis: Long, timeMillis: Long): Long {

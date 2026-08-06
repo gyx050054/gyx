@@ -1,6 +1,8 @@
 // 声明包名，这个文件是数据层模型
 package com.demo.kotlindemo.data.model
 
+import com.demo.kotlindemo.data.dto.ServiceTask
+
 /**
  * 定时任务状态枚举
  *  - PENDING    等待执行，还没到开始时间
@@ -38,3 +40,27 @@ data class TimingTask(
     val action: String = "on",          // 动作，默认开启
     val status: TaskStatus = TaskStatus.PENDING  // 状态，默认待执行
 )
+
+// ================= DTO → 模型 转换（集中在本文件，与模型高内聚） =================
+
+/**
+ * 微服务端任务 DTO → APP 定时任务模型
+ * 任务 ID 加 "svc_" 前缀，与本地任务区分；状态字符串映射为 TaskStatus 枚举
+ */
+fun ServiceTask.toTimingTask(): TimingTask {
+    val status = when (this.status) {
+        "RUNNING" -> TaskStatus.RUNNING
+        "COMPLETED" -> TaskStatus.COMPLETED
+        "CANCELLED" -> TaskStatus.CANCELLED
+        else -> TaskStatus.PENDING
+    }
+    return TimingTask(
+        id = "svc_$id",
+        deviceId = deviceId,
+        deviceName = deviceName,
+        startTime = startTime,
+        endTime = endTime,
+        action = action,
+        status = status
+    )
+}

@@ -13,8 +13,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.demo.kotlindemo.data.api.FarmRepository
+import com.demo.kotlindemo.data.api.ThingsBoardRepository
 import com.demo.kotlindemo.data.dto.TelemetryItem
+import com.demo.kotlindemo.util.TimeFormats
 import com.github.mikephil.charting.charts.LineChart
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.Entry
@@ -43,7 +44,7 @@ fun HistoryScreen(
     deviceName: String,
     onBack: () -> Unit
 ) {
-    val repository = remember { FarmRepository() }
+    val repository = remember { ThingsBoardRepository() }
     val scope = rememberCoroutineScope()
 
     // 时间范围选择：毫秒
@@ -210,8 +211,8 @@ fun HistoryScreen(
 
 // ── 工具函数 ──
 
-// 自定义时间解析格式：yyyy-MM-dd HH:mm
-private val customTimeFormatter = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+// 自定义时间解析格式：yyyy-MM-dd HH:mm（统一用 TimeFormats 单例）
+private val customTimeFormatter get() = TimeFormats.DATETIME
 
 /** 解析自定义时间字符串为毫秒时间戳；失败返回 null */
 private fun parseCustomTime(text: String): Long? {
@@ -234,7 +235,7 @@ private fun LineChartView(
     lineColor: Int,
     modifier: Modifier = Modifier
 ) {
-    val timeFormatter = remember { SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()) }
+    val timeFormatter = TimeFormats.MONTH_DAY_TIME
 
     AndroidView(
         modifier = modifier,

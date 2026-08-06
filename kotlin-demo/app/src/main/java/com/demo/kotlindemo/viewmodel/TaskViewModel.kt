@@ -14,7 +14,9 @@ import com.demo.kotlindemo.data.model.TaskStatus
 // 导入定时任务数据模型
 import com.demo.kotlindemo.data.model.TimingTask
 // 导入网络仓库
-import com.demo.kotlindemo.data.api.FarmRepository
+import com.demo.kotlindemo.data.api.TaskRepository
+// 导入任务 DTO→模型 转换
+import com.demo.kotlindemo.data.model.toTimingTask
 // 导入协程
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,7 +32,7 @@ import kotlinx.coroutines.launch
  */
 class TaskViewModel : ViewModel() {
 
-    private val repository = FarmRepository()
+    private val repository = TaskRepository()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // ── 任务列表（微服务端数据）──
@@ -108,23 +110,4 @@ class TaskViewModel : ViewModel() {
     fun clearMessage() {
         lastMessage = null
     }
-}
-
-/** 微服务端任务 → 本地 TimingTask 模型 */
-private fun com.demo.kotlindemo.data.dto.ServiceTask.toTimingTask(): TimingTask {
-    val status = when (this.status) {
-        "RUNNING" -> TaskStatus.RUNNING
-        "COMPLETED" -> TaskStatus.COMPLETED
-        "CANCELLED" -> TaskStatus.CANCELLED
-        else -> TaskStatus.PENDING
-    }
-    return TimingTask(
-        id = "svc_$id",
-        deviceId = deviceId,
-        deviceName = deviceName,
-        startTime = startTime,
-        endTime = endTime,
-        action = action,
-        status = status
-    )
 }
