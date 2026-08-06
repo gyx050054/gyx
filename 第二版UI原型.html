@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>智能灌溉系统 第二版 UI 原型</title>
+<style>
+  :root {
+    --primary: #2E7D5B;        /* 主色：农业绿 */
+    --primary-light: #E8F5EE;
+    --accent: #1B7FD4;         /* 工作中状态蓝 */
+    --danger: #E5484D;
+    --text: #1F2937;
+    --text-sub: #6B7280;
+    --bg: #F4F6F8;
+    --card: #FFFFFF;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #dfe4ea;
+    display: flex; gap: 32px; padding: 32px; align-items: flex-start; justify-content: center; flex-wrap: wrap;
+  }
+  /* 手机外框 */
+  .phone {
+    width: 380px; height: 780px; background: var(--bg); border-radius: 42px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.35); overflow: hidden; position: relative;
+    border: 8px solid #1a1a1a; display: flex; flex-direction: column;
+  }
+  .statusbar { height: 34px; background: var(--card); display: flex; justify-content: space-between; align-items: center; padding: 0 20px; font-size: 12px; color: #333; flex-shrink: 0; }
+  .screen { flex: 1; overflow-y: auto; padding: 16px; position: relative; }
+  .screen::-webkit-scrollbar { display: none; }
+  /* 页面切换 */
+  .page { display: none; }
+  .page.active { display: block; }
+  /* 顶栏 */
+  .topbar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .topbar h2 { font-size: 18px; flex: 1; }
+  .btn-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--primary-light); border: none; font-size: 18px; color: var(--primary); cursor: pointer; }
+  .btn-add { width: 36px; height: 36px; border-radius: 10px; background: var(--primary); border: none; font-size: 20px; color: #fff; cursor: pointer; }
+  /* 田块卡片 */
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field-card { background: var(--card); border-radius: var(--radius); padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.06); position: relative; }
+  .field-card .name { font-size: 15px; font-weight: 600; }
+  .field-card .count { font-size: 12px; color: var(--text-sub); margin-top: 6px; }
+  .field-card .badge { position: absolute; top: 10px; right: 10px; font-size: 11px; color: var(--primary); background: var(--primary-light); padding: 2px 8px; border-radius: 99px; }
+  /* 设备卡片 - 温湿度计 */
+  .device-card { background: var(--card); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .device-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .device-head .dname { font-size: 14px; font-weight: 600; flex: 1; }
+  .chip { font-size: 11px; padding: 3px 10px; border-radius: 99px; }
+  .chip.on { background: rgba(27,127,212,.12); color: var(--accent); }
+  .chip.off { background: #EEF0F2; color: var(--text-sub); }
+  .sensor-big { display: flex; gap: 12px; }
+  .sensor-big .val { font-size: 30px; font-weight: 700; color: var(--text); }
+  .sensor-big .unit { font-size: 13px; color: var(--text-sub); }
+  .sensor-big .col { flex: 1; background: var(--bg); border-radius: 12px; padding: 10px; text-align: center; }
+  /* 阀门卡片 - 第二版新 UI（大气大开关 + 数据行） */
+  .valve-card { background: linear-gradient(135deg, #fdfdfd, #f0faf5); border: 1.5px solid #d9efe3; border-radius: 20px; padding: 18px; margin-bottom: 14px; box-shadow: 0 4px 16px rgba(46,125,91,.10); }
+  .valve-card .head { display: flex; align-items: center; margin-bottom: 14px; }
+  .valve-card .head .dname { font-size: 15px; font-weight: 700; flex: 1; }
+  .valve-body { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  /* 大开关 */
+  .big-switch { width: 96px; height: 96px; border-radius: 50%; border: none; cursor: pointer; font-size: 15px; font-weight: 700; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; transition: all .3s; }
+  .big-switch.on { background: radial-gradient(circle at 30% 30%, #3f9ddb, #1B7FD4); box-shadow: 0 8px 24px rgba(27,127,212,.45); }
+  .big-switch.off { background: radial-gradient(circle at 30% 30%, #9aa3ad, #6B7280); box-shadow: 0 6px 18px rgba(107,114,128,.3); }
+  .big-switch .icon { font-size: 30px; line-height: 1; }
+  .valve-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: #fff; border-radius: 12px; padding: 10px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,.04); }
+  .stat .k { font-size: 11px; color: var(--text-sub); }
+  .stat .v { font-size: 15px; font-weight: 700; color: var(--text); }
+  /* 按钮 */
+  .btn { width: 100%; padding: 13px; border: none; border-radius: 14px; background: var(--primary); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .btn.ghost { background: var(--primary-light); color: var(--primary); }
+  .btn.danger { background: #FDEBEC; color: var(--danger); }
+  .btn-sm { width: auto; padding: 8px 16px; font-size: 13px; border-radius: 10px; }
+  /* 表单 */
+  .input { width: 100%; padding: 13px; border: 1.5px solid #E5E7EB; border-radius: 12px; font-size: 14px; margin-bottom: 12px; background: #fff; }
+  .label { font-size: 12px; color: var(--text-sub); margin-bottom: 6px; display: block; }
+  .radio-row { display: flex; gap: 10px; margin-bottom: 12px; }
+  .radio-item { flex: 1; border: 1.5px solid #E5E7EB; border-radius: 12px; padding: 12px; text-align: center; font-size: 13px; cursor: pointer; }
+  .radio-item.sel { border-color: var(--primary); background: var(--primary-light); color: var(--primary); font-weight: 600; }
+  /* 任务列表 */
+  .task-item { background: var(--card); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; box-shadow: 0 1px 5px rgba(0,0,0,.05); }
+  .task-item .info { flex: 1; }
+  .task-item .tname { font-size: 13px; font-weight: 600; }
+  .task-item .ttime { font-size: 11px; color: var(--text-sub); margin-top: 3px; }
+  .status { font-size: 11px; padding: 2px 8px; border-radius: 99px; }
+  .status.pending { background: #FFF7E0; color: #B7791F; }
+  .status.running { background: #E3F2FD; color: var(--accent); }
+  .status.done { background: #E8F5EE; color: var(--primary); }
+  .status.cancel { background: #EEF0F2; color: var(--text-sub); }
+  /* 弹窗 */
+  .modal-mask { display: none; position: absolute; inset: 0; background: rgba(0,0,0,.45); z-index: 10; align-items: flex-end; }
+  .modal-mask.show { display: flex; }
+  .modal { width: 100%; background: #fff; border-radius: 22px 22px 0 0; padding: 20px; }
+  .modal h3 { font-size: 16px; margin-bottom: 14px; }
+  /* token 框 */
+  .token-box { background: #F4F6F8; border: 1.5px dashed #CBD5E1; border-radius: 12px; padding: 12px; font-size: 12px; word-break: break-all; color: var(--text); margin-bottom: 12px; font-family: monospace; }
+  /* 底部 Tab */
+  .tabbar { height: 56px; background: var(--card); border-top: 1px solid #EDF0F2; display: flex; flex-shrink: 0; }
+  .tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; color: var(--text-sub); cursor: pointer; }
+  .tab .ic { font-size: 20px; }
+  .tab.active { color: var(--primary); }
+  /* 右侧说明面板 */
+  .legend { width: 420px; background: #fff; border-radius: 16px; padding: 20px; box-shadow: 0 4px 16px rgba(0,0,0,.1); }
+  .legend h2 { font-size: 16px; margin-bottom: 10px; }
+  .legend li { font-size: 13px; color: var(--text-sub); margin: 6px 0; line-height: 1.6; }
+  .legend .hl { color: var(--primary); font-weight: 600; }
+  .page-nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .page-nav button { border: 1px solid #E5E7EB; background: #fff; border-radius: 8px; padding: 6px 10px; font-size: 12px; cursor: pointer; }
+  .page-nav button:hover { background: var(--primary-light); }
+</style>
+</head>
+<body>
+
+<div class="phone">
+  <div class="statusbar"><span>09:41</span><span>📶 🔋</span></div>
+  <div class="screen">
+    <div class="page-nav">
+      <button onclick="go('login')">登录</button><button onclick="go('register')">注册</button>
+      <button onclick="go('pwd')">强制改密</button><button onclick="go('home')">田块总览</button>
+      <button onclick="go('field')">田块详情</button><button onclick="go('device')">新增设备</button>
+      <button onclick="go('cred')">设备凭证</button><button onclick="go('users')">农户管理</button>
+      <button onclick="go('tasks')">任务管理</button><button onclick="go('me')">我的</button>
+    </div>
+
+    <!-- 登录页 -->
+    <div class="page" id="login">
+      <div style="text-align:center; margin: 40px 0 24px;">
+        <div style="font-size:44px;">🌱</div>
+        <h1 style="font-size:22px; margin-top:8px;">智能灌溉</h1>
+        <p style="color:var(--text-sub); font-size:13px; margin-top:4px;">多租户田块管理平台</p>
+      </div>
+      <label class="label">邮箱（登录账号）</label>
+      <input class="input" placeholder="user@example.com" value="15079983758@163.com">
+      <label class="label">密码</label>
+      <input class="input" type="password" placeholder="••••••••">
+      <button class="btn">登 录</button>
+      <p style="text-align:center; margin-top:16px; font-size:13px; color:var(--text-sub);">
+        没有账号？<a style="color:var(--primary); font-weight:600; cursor:pointer;" onclick="go('register')">注册</a>
+      </p>
+      <p style="text-align:center; margin-top:10px; font-size:11px; color:#9CA3AF;">演示账号：guanliyuan@thingsboard.org / 789456</p>
+    </div>
+
+    <!-- 注册页 -->
+    <div class="page" id="register">
+      <div class="topbar"><h2>注册租户</h2><button class="btn-icon" onclick="go('login')">←</button></div>
+      <p style="font-size:12px; color:var(--text-sub); margin-bottom:14px;">注册后自动创建：你的租户 + 租户管理员账号。首次登录需修改密码。</p>
+      <label class="label">邮箱（即登录账号）</label>
+      <input class="input" placeholder="user@example.com">
+      <label class="label">密码</label>
+      <input class="input" type="password" placeholder="至少 8 位">
+      <label class="label">确认密码</label>
+      <input class="input" type="password" placeholder="再次输入密码">
+      <button class="btn">注册</button>
+      <p style="text-align:center; margin-top:14px; font-size:12px; color:var(--text-sub);">注册成功提示「注册成功，请登录」</p>
+    </div>
+
+    <!-- 强制改密 -->
+    <div class="page" id="pwd">
+      <div style="text-align:center; margin: 30px 0 20px;"><div style="font-size:40px;">🔒</div><h2 style="margin-top:8px;">首次登录需修改密码</h2></div>
+      <label class="label">当前密码</label>
+      <input class="input" type="password" placeholder="初始密码">
+      <label class="label">新密码</label>
+      <input class="input" type="password" placeholder="设置新密码">
+      <label class="label">确认新密码</label>
+      <input class="input" type="password" placeholder="再次输入新密码">
+      <button class="btn" onclick="go('home')">确认修改并进入</button>
+      <p style="font-size:11px; color:#9CA3AF; margin-top:10px; text-align:center;">修改成功前无法进入主界面</p>
+    </div>
+
+    <!-- 主界面：田块总览 -->
+    <div class="page" id="home">
+      <div class="topbar">
+        <h2>田块总览</h2>
+        <button class="btn-add" title="新增田块" onclick="showModal('addField')">＋</button>
+      </div>
+      <div class="field-grid">
+        <div class="field-card"><span class="badge">管理员</span><div class="name">田地1</div><div class="count">3 台设备 · 2 在线</div></div>
+        <div class="field-card"><span class="badge">管理员</span><div class="name">田地2</div><div class="count">3 台设备 · 1 在线</div></div>
+        <div class="field-card"><div class="name">田地3</div><div class="count">3 台设备 · 3 在线</div></div>
+        <div class="field-card"><div class="name">田地4</div><div class="count">3 台设备 · 2 在线</div></div>
+        <div class="field-card"><div class="name">田地5</div><div class="count">3 台设备 · 1 在线</div></div>
+        <div class="field-card" style="border:1.5px dashed #CBD5E1; background:transparent; display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="showModal('addField')">
+          <span style="color:var(--text-sub); font-size:13px;">＋ 新增田块</span>
+        </div>
+      </div>
+      <p style="font-size:11px; color:#9CA3AF; margin-top:12px;">※ 长按田块卡片可删除（二次确认：「该田块下有 N 台设备，删除后设备变为未挂载」）</p>
+    </div>
+
+    <!-- 田块详情（含第二版阀门新卡片） -->
+    <div class="page" id="field">
+      <div class="topbar">
+        <button class="btn-icon" onclick="go('home')">←</button>
+        <h2>田地1 · 3 台设备</h2>
+        <button class="btn-add" title="新增设备" onclick="go('device')">＋</button>
+      </div>
+      <p style="font-size:11px; color:var(--text-sub); margin-bottom:10px;">页面每 10 秒自动刷新</p>
+
+      <!-- 阀门卡片（第二版新 UI） -->
+      <div class="valve-card">
+        <div class="head">
+          <span class="dname">🌊 田地1-灌溉阀门A</span>
+          <span class="chip on">● 工作中</span>
+        </div>
+        <div class="valve-body">
+          <div>
+            <div style="font-size:12px; color:var(--text-sub);">瞬时流量</div>
+            <div style="font-size:24px; font-weight:700; color:var(--accent);">12.5 <span style="font-size:12px;">L/min</span></div>
+          </div>
+          <button class="big-switch on" onclick="this.classList.toggle('on');this.classList.toggle('off')">
+            <span class="icon">⏻</span><span>关闭</span>
+          </button>
+          <div style="text-align:right;">
+            <div style="font-size:12px; color:var(--text-sub);">累计用水</div>
+            <div style="font-size:20px; font-weight:700;">3.24 <span style="font-size:11px;">m³</span></div>
+          </div>
+        </div>
+        <div class="valve-stats">
+          <div class="stat"><div class="k">管道水压</div><div class="v">0.35 MPa</div></div>
+          <div class="stat"><div class="k">电量</div><div class="v">85%</div></div>
+        </div>
+      </div>
+
+      <!-- 阀门卡片（未工作态） -->
+      <div class="valve-card" style="border-color:#E5E7EB; background:#fff;">
+        <div class="head">
+          <span class="dname">🌊 田地1-灌溉阀门B</span>
+          <span class="chip off">未工作</span>
+        </div>
+        <div class="valve-body">
+          <div>
+            <div style="font-size:12px; color:var(--text-sub);">瞬时流量</div>
+            <div style="font-size:24px; font-weight:700; color:#9CA3AF;">--</div>
+          </div>
+          <button class="big-switch off" onclick="this.classList.toggle('on');this.classList.toggle('off')">
+            <span class="icon">⏻</span><span>开启</span>
+          </button>
+          <div style="text-align:right;">
+            <div style="font-size:12px; color:var(--text-sub);">累计用水</div>
+            <div style="font-size:20px; font-weight:700;">1.02 <span style="font-size:11px;">m³</span></div>
+          </div>
+        </div>
+        <div class="valve-stats">
+          <div class="stat"><div class="k">管道水压</div><div class="v">--</div></div>
+          <div class="stat"><div class="k">电量</div><div class="v">76%</div></div>
+        </div>
+      </div>
+
+      <!-- 温湿度计卡片 -->
+      <div class="device-card">
+        <div class="device-head"><span class="dname">🌡️ 田地1-温湿度计A</span><span class="chip on">● 在线</span></div>
+        <div class="sensor-big">
+          <div class="col"><div class="val">28.5<span class="unit"> ℃</span></div><div class="unit">温度</div></div>
+          <div class="col"><div class="val">65.2<span class="unit"> %</span></div><div class="unit">湿度</div></div>
+        </div>
+        <div style="font-size:11px; color:#9CA3AF; margin-top:8px;">最近上报 14:30:05 · 点击查看历史曲线</div>
+      </div>
+    </div>
+
+    <!-- 新增设备 -->
+    <div class="page" id="device">
+      <div class="topbar"><button class="btn-icon" onclick="go('field')">←</button><h2>新增设备</h2></div>
+      <label class="label">设备名称</label>
+      <input class="input" placeholder="如：田地1-灌溉阀门C">
+      <label class="label">设备类型（创建后不可更改）</label>
+      <div class="radio-row">
+        <div class="radio-item sel">🚰 电动阀</div>
+        <div class="radio-item">🌡️ 温度湿度计</div>
+      </div>
+      <label class="label">挂载田块</label>
+      <select class="input"><option>田地1</option><option>田地2</option><option>田地3</option></select>
+      <button class="btn" onclick="go('cred')">创建设备</button>
+      <p style="font-size:11px; color:#9CA3AF; margin-top:10px;">※ 第二版仅支持两种类型；创建后自动弹出设备凭证</p>
+    </div>
+
+    <!-- 设备凭证 -->
+    <div class="page" id="cred">
+      <div class="topbar"><button class="btn-icon" onclick="go('field')">←</button><h2>设备凭证</h2></div>
+      <div style="text-align:center; margin:14px 0;"><div style="width:110px;height:110px;background:#fff;border:1px solid #E5E7EB;border-radius:10px;margin:0 auto;display:flex;align-items:center;justify-content:center;font-size:11px;color:#9CA3AF;">二维码占位</div></div>
+      <label class="label">Access Token（设备接入用）</label>
+      <div class="token-box">iInr7MvL2QNxStG2xgU6xbLkRqS3tUvW9</div>
+      <button class="btn">复制 Token</button>
+      <p style="font-size:11px; color:#9CA3AF; margin-top:10px;">将 Token 配置到你的设备（MQTT username），设备数据会自动出现在系统里</p>
+    </div>
+
+    <!-- 农户管理 -->
+    <div class="page" id="users">
+      <div class="topbar"><h2>农户管理</h2><button class="btn-add" onclick="showModal('addUser')">＋</button></div>
+      <p style="font-size:12px; color:var(--text-sub); margin-bottom:10px;">租户管理员为农户创建账号（农户可操作不可管理）</p>
+      <div class="task-item">
+        <div style="font-size:20px;">👨‍🌾</div>
+        <div class="info"><div class="tname">张师傅</div><div class="ttime">zhang@farm.com</div></div>
+        <button class="btn-sm danger">删除</button>
+      </div>
+      <div class="task-item">
+        <div style="font-size:20px;">👩‍🌾</div>
+        <div class="info"><div class="tname">李大姐</div><div class="ttime">li@farm.com</div></div>
+        <button class="btn-sm danger">删除</button>
+      </div>
+    </div>
+
+    <!-- 任务管理 -->
+    <div class="page" id="tasks">
+      <div class="topbar"><h2>任务管理</h2><span style="font-size:12px; color:var(--text-sub);">共 N 条</span></div>
+      <div class="task-item">
+        <div class="info"><div class="tname">田地1-灌溉阀门A · 浇水</div><div class="ttime">08-05 14:00 → 16:00</div></div>
+        <span class="status running">执行中</span>
+        <button class="btn-sm danger">取消</button>
+      </div>
+      <div class="task-item">
+        <div class="info"><div class="tname">田地2-灌溉阀门B · 浇水</div><div class="ttime">08-06 06:00 → 07:00</div></div>
+        <span class="status pending">等待</span>
+        <button class="btn-sm danger">取消</button>
+      </div>
+      <div class="task-item">
+        <div class="info"><div class="tname">田地3-灌溉阀门C · 浇水</div><div class="ttime">08-05 08:00 → 09:00</div></div>
+        <span class="status done">已完成</span>
+      </div>
+      <div class="task-item">
+        <div class="info"><div class="tname">田地4-灌溉阀门D · 浇水</div><div class="ttime">08-04 10:00 → 11:00</div></div>
+        <span class="status cancel">已取消</span>
+      </div>
+      <p style="font-size:11px; color:#9CA3AF; margin-top:8px;">※ 第二版：任务按租户隔离，只显示本租户任务</p>
+    </div>
+
+    <!-- 我的 -->
+    <div class="page" id="me">
+      <div style="text-align:center; margin:24px 0;"><div style="width:64px;height:64px;border-radius:50%;background:var(--primary-light);font-size:30px;display:flex;align-items:center;justify-content:center;margin:0 auto;">👤</div>
+      <h3 style="margin-top:8px;">15079983758@163.com</h3>
+      <span class="chip on" style="background:var(--primary-light); color:var(--primary);">租户管理员</span></div>
+      <button class="btn ghost" style="margin-bottom:10px;">修改密码</button>
+      <button class="btn danger">退出登录</button>
+      <p style="font-size:11px; color:#9CA3AF; margin-top:14px; text-align:center;">农户账号登录时不显示「田块/设备/农户管理」入口</p>
+    </div>
+
+  </div>
+  <div class="tabbar">
+    <div class="tab active" onclick="go('home')"><span class="ic">🏡</span>田块</div>
+    <div class="tab" onclick="go('tasks')"><span class="ic">📋</span>任务</div>
+    <div class="tab" onclick="go('me')"><span class="ic">👤</span>我的</div>
+  </div>
+
+  <!-- 新增田块弹窗 -->
+  <div class="modal-mask" id="addField">
+    <div class="modal">
+      <h3>新增田块</h3>
+      <label class="label">田块名称（租户内唯一）</label>
+      <input class="input" placeholder="如：田地6">
+      <button class="btn">保存</button>
+      <button class="btn ghost" style="margin-top:8px;" onclick="hideModal('addField')">取消</button>
+    </div>
+  </div>
+
+  <!-- 新增农户弹窗 -->
+  <div class="modal-mask" id="addUser">
+    <div class="modal">
+      <h3>新增农户</h3>
+      <label class="label">农户名称</label>
+      <input class="input" placeholder="如：王师傅">
+      <label class="label">邮箱（登录账号）</label>
+      <input class="input" placeholder="wang@farm.com">
+      <label class="label">初始密码</label>
+      <input class="input" placeholder="设置初始密码">
+      <button class="btn">创建</button>
+      <button class="btn ghost" style="margin-top:8px;" onclick="hideModal('addUser')">取消</button>
+    </div>
+  </div>
+</div>
+
+<div class="legend">
+  <h2>📱 第二版 UI 原型说明</h2>
+  <p style="font-size:13px; color:var(--text-sub); margin-bottom:10px;">点击顶部按钮切换页面；阀门卡片上的开关可点击切换状态。</p>
+  <h2 style="margin-top:14px;">第二版核心页面（10 个）</h2>
+  <ul>
+    <li><span class="hl">登录页</span>：邮箱+密码，新增「注册」入口；下方提示演示账号</li>
+    <li><span class="hl">注册页</span>：注册即建租户+租户管理员，首次登录强制改密</li>
+    <li><span class="hl">强制改密页</span>：旧密码+新密码，改完才进主界面</li>
+    <li><span class="hl">田块总览</span>：卡片网格 + 右上角「＋」新增田块；长按删除</li>
+    <li><span class="hl">田块详情</span>：<b>阀门卡片新 UI</b>（大号渐变开关 + 流量/水压/电量数据行）、温湿度计大字卡片</li>
+    <li><span class="hl">新增设备</span>：名称 + 类型单选（仅电动阀/温度湿度计）+ 挂载田块下拉</li>
+    <li><span class="hl">设备凭证</span>：Access Token 展示/复制/二维码（真设备接入用）</li>
+    <li><span class="hl">农户管理</span>：租户管理员建农户账号（列表+新增+删除）</li>
+    <li><span class="hl">任务管理</span>：四态标识 + 取消；第二版按租户隔离</li>
+    <li><span class="hl">我的</span>：角色标识（租户管理员/农户）+ 改密 + 退出</li>
+  </ul>
+  <h2 style="margin-top:14px;">角色权限差异</h2>
+  <ul>
+    <li><b>租户管理员</b>：全部功能（含新增/删除田块、设备、农户管理）</li>
+    <li><b>农户</b>：只能看数据、开关阀、设定时任务；<span class="hl">无「＋」新增入口、无农户管理</span></li>
+  </ul>
+</div>
+
+<script>
+function go(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function showModal(id) { document.getElementById(id).classList.add('show'); }
+function hideModal(id) { document.getElementById(id).classList.remove('show'); }
+</script>
+</body>
+</html>
