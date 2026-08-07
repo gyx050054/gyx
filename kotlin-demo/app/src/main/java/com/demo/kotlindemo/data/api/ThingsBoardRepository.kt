@@ -94,6 +94,33 @@ class ThingsBoardRepository {
         fetchDeviceWithTelemetry(info, fieldId)
     }
 
+    /**
+     * 新增田块（第二版，租户管理员专属）
+     * 流程：查 FIELD 资产配置 profileId → POST /api/asset（type=FIELD）
+     * @param name 田块名称（租户内唯一）
+     * @return true=创建成功
+     */
+    suspend fun createField(name: String): Boolean = withContext(Dispatchers.IO) {
+        // 查 FIELD profile（不存在则只传 type，由 TB 使用默认资产配置）
+        val profileId = api.getAssetProfiles(pageSize = 100, page = 0, textSearch = "FIELD").data
+            .firstOrNull { it.name == "FIELD" }?.id?.id
+        val body = mutableMapOf<String, Any>("name" to name, "type" to "FIELD")
+        if (profileId != null) {
+            body["assetProfileId"] = mapOf("entityType" to "ASSET_PROFILE", "id" to profileId)
+        }
+        api.createAsset(body).id.id.isNotEmpty()
+    }
+
+    /**
+     * 删除田块（第二版，租户管理员专属）
+     * TB 删除 Asset 会级联清理其 Contains 关系，田块下设备自动变为「自由设备」（可重新挂载）
+     * @param fieldId 田块 ID
+     * @return true=删除成功
+     */
+    suspend fun deleteField(fieldId: String): Boolean = withContext(Dispatchers.IO) {
+        api.deleteAsset(fieldId).isSuccessful
+    }
+
     /** 开关阀门（RPC oneway，不等待设备回执） */
     suspend fun toggleValve(deviceId: String, on: Boolean): Boolean = withContext(Dispatchers.IO) {
         val resp = api.sendRpc(

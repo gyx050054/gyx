@@ -138,6 +138,50 @@ class FarmViewModel : ViewModel() {
         loadAllDevices()
     }
 
+    // ── 田块管理（第二版新增：新增/删除田块）──
+
+    /**
+     * 新增田块（租户管理员）：成功后自动刷新田块列表
+     * @param name 田块名称
+     * @param onResult 回调 (是否成功, 提示信息)
+     */
+    fun createField(name: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        scope.launch {
+            try {
+                val ok = repository.createField(name.trim())
+                if (ok) {
+                    loadFields()  // 新增成功立即刷新列表
+                    onResult(true, "田块「$name」新增成功")
+                } else {
+                    onResult(false, "新增田块失败")
+                }
+            } catch (e: Exception) {
+                onResult(false, "新增田块失败：${e.message}")
+            }
+        }
+    }
+
+    /**
+     * 删除田块（租户管理员，支持多选批量）：删除后田块下设备自动变为自由设备
+     * @param ids 要删除的田块 ID 列表
+     * @param onResult 回调 (是否全部成功, 提示信息)
+     */
+    fun deleteFields(ids: List<String>, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        scope.launch {
+            var allOk = true
+            for (id in ids) {
+                try {
+                    val ok = repository.deleteField(id)
+                    if (!ok) allOk = false
+                } catch (e: Exception) {
+                    allOk = false
+                }
+            }
+            loadFields()  // 删除后刷新列表（被删田块消失，设备变自由设备）
+            onResult(allOk, if (allOk) "已删除 ${ids.size} 块田块" else "部分田块删除失败")
+        }
+    }
+
     /** 清除错误提示 */
     fun clearError() {
         errorMessage = null

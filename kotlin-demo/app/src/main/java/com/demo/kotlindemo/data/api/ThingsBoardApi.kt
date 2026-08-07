@@ -38,6 +38,22 @@ interface ThingsBoardApi {
         @Query("type") type: String? = null
     ): PageData<AssetInfoDto>
 
+    // 新增田块（第二版）：POST /api/asset {"name","type":"FIELD","assetProfileId":{...}}
+    @POST("api/asset")
+    suspend fun createAsset(@Body body: Any): AssetInfoDto
+
+    // 删除田块（第二版）：DELETE /api/asset/{assetId}，其下设备自动变为自由设备
+    @DELETE("api/asset/{assetId}")
+    suspend fun deleteAsset(@Path("assetId") assetId: String): Response<ResponseBody>
+
+    // 查询田块配置（新增田块需 FIELD assetProfileId）
+    @GET("api/assetProfileInfos")
+    suspend fun getAssetProfiles(
+        @Query("pageSize") pageSize: Int = 100,
+        @Query("page") page: Int = 0,
+        @Query("textSearch") textSearch: String? = null
+    ): PageData<AssetProfileDto>
+
     // ---------- 关系（资产 Contains 设备） ----------
     // GET /api/relations/from/ASSET/{assetId}
     @GET("api/relations/from/ASSET/{assetId}")

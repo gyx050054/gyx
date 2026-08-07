@@ -43,6 +43,13 @@ data class AssetInfoDto(
     val label: String? = null
 )
 
+// 资产配置信息（assetProfileInfos 返回项；新增田块需指定 FIELD profile）
+data class AssetProfileDto(
+    val id: EntityId = EntityId(),
+    val name: String = "",
+    val type: String = ""
+)
+
 // 实体关系（GET /api/relations/from/... 返回项）
 data class EntityRelationDto(
     val from: EntityId = EntityId(),
