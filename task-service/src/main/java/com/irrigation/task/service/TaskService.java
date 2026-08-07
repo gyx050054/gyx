@@ -61,7 +61,8 @@ public class TaskService {
      * @throws IllegalArgumentException 时间参数非法时抛出（由全局异常处理转 400）
      */
     @Transactional
-    public Task createTask(String deviceId, String deviceName, Long startTime, Long endTime, String action) {
+    public Task createTask(String deviceId, String deviceName, Long startTime, Long endTime, String action,
+                           String tenantId) {
         // 参数校验：时间必填且区间合法（endTime > startTime，文档要求间隔 ≥1 分钟由 APP 保证）
         if (startTime == null || endTime == null || endTime <= startTime) {
             throw new IllegalArgumentException("时间参数非法：startTime/endTime 必填且 endTime > startTime");
@@ -78,6 +79,7 @@ public class TaskService {
         t.setEndTime(endTime);
         t.setAction(action == null ? DEFAULT_ACTION : action);
         t.setStatus(Task.Status.PENDING); // 新建任务固定为等待执行
+        t.setTenantId(tenantId);          // 第二版多租户：任务归属租户（APP 从 JWT 解析）
         return taskRepository.save(t);
     }
 
@@ -102,7 +104,8 @@ public class TaskService {
         // 预检通过，逐个创建
         List<Task> created = new ArrayList<>();
         for (TaskDraft d : tasks) {
-            created.add(createTask(d.deviceId(), d.deviceName(), d.startTime(), d.endTime(), d.action()));
+            created.add(createTask(d.deviceId(), d.deviceName(), d.startTime(), d.endTime(), d.action(),
+                    d.tenantId()));
         }
         return created;
     }
@@ -138,11 +141,36 @@ public class TaskService {
     }
 
     /**
+     * 按设备取消其全部未完成任务（第二版新增：APP 删除设备前调用）
+     *  - RUNNING 的任务先发 pauseValve 暂停设备，再置 CANCELLED；
+     *  - 已完成/已取消的终态任务不受影响（保留历史）。
+     *
+     * @param deviceId ThingsBoard 设备 ID
+     * @return 被取消的任务数量
+     */
+    @Transactional
+    public int cancelTasksByDevice(String deviceId) {
+        // 只处理未完成任务（PENDING/RUNNING），终态任务保留
+        List<Task> active = taskRepository.findByDeviceIdAndStatusIn(
+                deviceId, List.of(Task.Status.PENDING, Task.Status.RUNNING));
+        for (Task t : active) {
+            if (t.getStatus() == Task.Status.RUNNING) {
+                tbClient.pauseValve(deviceId);
+                log.info("删除设备级联取消：任务 {} 运行中，已发 pauseValve 暂停", t.getId());
+            }
+            t.setStatus(Task.Status.CANCELLED);
+        }
+        taskRepository.saveAll(active);
+        log.info("删除设备级联取消：deviceId={} 共取消 {} 条任务", deviceId, active.size());
+        return active.size();
+    }
+
+    /**
      * 查询全部任务（任务管理页：含已完成/已取消，保留记录供展示）
      *
      * @param tenantId 租户 ID；非 null 时只返回该租户的任务（第二版多租户隔离，第一版传 null 查全部）
      */
-    public List<Task> listAll(Long tenantId) {
+    public List<Task> listAll(String tenantId) {
         if (tenantId == null) {
             return taskRepository.findAll();
         }
@@ -153,6 +181,7 @@ public class TaskService {
      * 批量创建任务的入参（轻量 DTO：避免 Controller 直接依赖 JsonNode）
      * 使用 record：Java 17 简洁不可变数据结构
      */
-    public record TaskDraft(String deviceId, String deviceName, Long startTime, Long endTime, String action) {
+    public record TaskDraft(String deviceId, String deviceName, Long startTime, Long endTime, String action,
+                            String tenantId) {
     }
 }

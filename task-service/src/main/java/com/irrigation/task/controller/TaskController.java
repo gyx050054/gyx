@@ -55,12 +55,13 @@ public class TaskController {
         Long start = body.has("startTime") ? body.get("startTime").asLong() : null;
         Long end = body.has("endTime") ? body.get("endTime").asLong() : null;
         String action = body.path("action").asText(); // null 时由 TaskService 收敛为默认 on
+        String tenantId = body.path("tenantId").asText(null); // 第二版多租户：可选，APP 从 JWT 解析提交
 
         // 参数预校验（与 TaskService 内部校验一致，双保险；非法直接 400）
         if (deviceId.isEmpty() || start == null || end == null || end <= start) {
             return ResponseEntity.badRequest().body(error("参数非法：deviceId/startTime/endTime 必填，endTime 需大于 startTime"));
         }
-        Task t = taskService.createTask(deviceId, deviceName, start, end, action);
+        Task t = taskService.createTask(deviceId, deviceName, start, end, action, tenantId);
         if (t == null) {
             ObjectNode resp = ok(false, "设备 " + deviceId + " 在此时段已有任务，添加失败（冲突）");
             return ResponseEntity.ok(resp);
@@ -84,7 +85,8 @@ public class TaskController {
                 return ResponseEntity.badRequest().body(error("批量任务参数非法（deviceId/startTime/endTime 必填）"));
             }
             drafts.add(new TaskService.TaskDraft(
-                    id, d.path("deviceName").asText(id), s, e, d.path("action").asText()));
+                    id, d.path("deviceName").asText(id), s, e, d.path("action").asText(),
+                    d.path("tenantId").asText(null)));
         }
         // TaskService 内部完成整体冲突预检：任一冲突返回空列表（全部拒绝）
         List<Task> created = taskService.createTasks(drafts);
@@ -103,7 +105,7 @@ public class TaskController {
      * 可选参数 tenantId：第二版多租户隔离（各租户只见自己的任务）
      */
     @GetMapping
-    public List<Task> list(@RequestParam(required = false) Long tenantId) {
+    public List<Task> list(@RequestParam(required = false) String tenantId) {
         return taskService.listAll(tenantId);
     }
 
@@ -113,6 +115,17 @@ public class TaskController {
         boolean ok = taskService.cancelTask(id);
         ObjectNode resp = ok(ok, ok ? "任务已取消" : "任务不存在或不可取消");
         return ok ? ResponseEntity.ok(resp) : ResponseEntity.status(404).body(resp);
+    }
+
+    /**
+     * 删除设备时取消其全部未完成任务（APP 删除设备前调用，需求文档 5.3）
+     * 路径与 /{id} 不冲突：本路径为两段（device/{deviceId}），/{id} 为单段
+     */
+    @DeleteMapping("/device/{deviceId}")
+    public ResponseEntity<JsonNode> cancelByDevice(@PathVariable String deviceId) {
+        int n = taskService.cancelTasksByDevice(deviceId);
+        ObjectNode resp = ok(true, "已取消该设备 " + n + " 条未完成任务");
+        return ResponseEntity.ok(resp);
     }
 
     // ---------- 私有工具：统一响应结构（与原版完全一致） ----------

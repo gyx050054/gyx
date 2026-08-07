@@ -33,5 +33,8 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
      * 按租户查询任务（第二版多租户隔离预留）
      * 多租户上线后，各租户的任务列表/取消操作均以本方法隔离，避免跨租户访问
      */
-    List<Task> findByTenantId(Long tenantId);
+    List<Task> findByTenantId(String tenantId);
+
+    /** 查询某设备上所有未完成任务（PENDING/RUNNING）——删除设备时级联取消用 */
+    List<Task> findByDeviceIdAndStatusIn(String deviceId, List<Task.Status> statuses);
 }
