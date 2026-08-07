@@ -23,6 +23,12 @@ public class ThingsBoardProperties {
     /** TB 登录密码 */
     private String password;
 
+    /** TB SysAdmin 登录账号（仅服务端持有，用于注册建租户等管理操作，绝不下发 App） */
+    private String sysadminUsername;
+
+    /** TB SysAdmin 登录密码 */
+    private String sysadminPassword;
+
     /** RPC 下发超时（毫秒），默认 10 秒；同时用作 RestTemplate 连接/读取超时 */
     private long rpcTimeoutMs = 10_000L;
 
@@ -34,6 +40,12 @@ public class ThingsBoardProperties {
 
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }
+
+    public String getSysadminUsername() { return sysadminUsername; }
+    public void setSysadminUsername(String sysadminUsername) { this.sysadminUsername = sysadminUsername; }
+
+    public String getSysadminPassword() { return sysadminPassword; }
+    public void setSysadminPassword(String sysadminPassword) { this.sysadminPassword = sysadminPassword; }
 
     public long getRpcTimeoutMs() { return rpcTimeoutMs; }
     public void setRpcTimeoutMs(long rpcTimeoutMs) { this.rpcTimeoutMs = rpcTimeoutMs; }

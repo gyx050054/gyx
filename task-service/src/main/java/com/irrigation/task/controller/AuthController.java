@@ -1,0 +1,85 @@
+package com.irrigation.task.controller;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.irrigation.task.service.AuthService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * 认证 REST API（第二版新增，供 App 注册 / 强制改密流程调用）
+ *
+ * POST /api/auth/register              租户注册（默认密码 123456 + 登记强制改密）
+ * GET  /api/auth/must-change-password  查询指定邮箱是否需强制改密
+ * POST /api/auth/pwd-changed           标记指定邮箱已完成改密
+ *
+ * 响应结构：统一 {success, message}（与任务接口一致，APP 无需适配两套格式）。
+ */
+@RestController
+@RequestMapping("/api/auth")
+public class AuthController {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+
+    private final AuthService authService;
+    private final ObjectMapper mapper = new ObjectMapper();
+
+    public AuthController(AuthService authService) {
+        this.authService = authService;
+    }
+
+    /** 租户注册：body {"email": "..."} */
+    @PostMapping("/register")
+    public ResponseEntity<JsonNode> register(@RequestBody JsonNode body) {
+        String email = body.path("email").asText("");
+        try {
+            authService.register(email);
+            return ResponseEntity.ok(ok(true, "注册成功，请登录"));
+        } catch (IllegalArgumentException e) {
+            // 参数非法：400 + 明确提示
+            return ResponseEntity.badRequest().body(ok(false, e.getMessage()));
+        } catch (Exception e) {
+            // 其它异常（TB 不可达/创建失败）：200 + 失败信息，便于 App 统一提示
+            log.error("注册失败 email={}: {}", email, e.getMessage());
+            return ResponseEntity.ok(ok(false, "注册失败：" + e.getMessage()));
+        }
+    }
+
+    /** 查询是否需强制改密：GET /api/auth/must-change-password?email=... */
+    @GetMapping("/must-change-password")
+    public JsonNode mustChangePassword(@RequestParam String email) {
+        boolean must = authService.isMustChangePassword(email);
+        ObjectNode resp = ok(true, must ? "需要改密" : "无需改密");
+        resp.put("mustChange", must);
+        return resp;
+    }
+
+    /** 标记已完成改密：POST /api/auth/pwd-changed {"email": "..."} */
+    @PostMapping("/pwd-changed")
+    public ResponseEntity<JsonNode> pwdChanged(@RequestBody JsonNode body) {
+        String email = body.path("email").asText("");
+        try {
+            authService.markPasswordChanged(email);
+            return ResponseEntity.ok(ok(true, "改密标记已清除"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(ok(false, e.getMessage()));
+        }
+    }
+
+    // ---------- 私有工具：统一响应结构（与任务接口一致） ----------
+
+    private ObjectNode ok(boolean success, String message) {
+        ObjectNode n = mapper.createObjectNode();
+        n.put("success", success);
+        n.put("message", message);
+        return n;
+    }
+}
