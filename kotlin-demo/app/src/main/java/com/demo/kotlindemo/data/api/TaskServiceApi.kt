@@ -2,6 +2,8 @@ package com.demo.kotlindemo.data.api
 
 import com.demo.kotlindemo.data.dto.ServiceTask
 import com.demo.kotlindemo.data.dto.TaskCreateResponse
+import com.demo.kotlindemo.data.dto.ServiceResponse
+import com.demo.kotlindemo.data.dto.MustChangeResponse
 import retrofit2.http.*
 
 /**
@@ -21,4 +23,18 @@ interface TaskServiceApi {
     // 删除任务
     @DELETE("api/tasks/{id}")
     suspend fun deleteTask(@Path("id") id: Long): TaskCreateResponse
+
+    // ---------- 认证（第二版新增：注册 / 强制改密标记） ----------
+
+    // 租户注册：{email} → {success, message}
+    @POST("api/auth/register")
+    suspend fun register(@Body body: Any): ServiceResponse
+
+    // 查询是否需强制改密：GET ?email=... → {success, message, mustChange}
+    @GET("api/auth/must-change-password")
+    suspend fun mustChangePassword(@Query("email") email: String): MustChangeResponse
+
+    // 标记已完成改密：{email} → {success, message}
+    @POST("api/auth/pwd-changed")
+    suspend fun pwdChanged(@Body body: Any): ServiceResponse
 }

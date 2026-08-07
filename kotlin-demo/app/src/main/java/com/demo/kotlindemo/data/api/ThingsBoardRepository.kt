@@ -30,16 +30,21 @@ class ThingsBoardRepository {
 
     private val api = ApiClient.thingsboard
 
-    /** 登录：成功则缓存 JWT 到 AuthInterceptor（后续请求自动携带） */
+    /** 登录：成功则缓存 JWT 到 AuthInterceptor 与 TokenStore（后续请求自动携带，重启不掉线） */
     suspend fun login(username: String, password: String): LoginResponse {
         val resp = api.login(mapOf("username" to username, "password" to password))
         AuthInterceptor.token = resp.token
+        // 第二版：token 持久化，杀进程重开后仍保持登录
+        if (resp.token.isNotEmpty()) {
+            TokenStore.save(resp.token)
+        }
         return resp
     }
 
-    /** 退出登录：清空内存中的 JWT */
+    /** 退出登录：清空内存与持久化的 JWT */
     fun logout() {
         AuthInterceptor.token = null
+        TokenStore.clear()
     }
 
     /** 获取所有田块（资产列表 + 每个田块的设备数） */

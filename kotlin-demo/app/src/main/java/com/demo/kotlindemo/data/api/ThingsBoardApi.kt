@@ -15,6 +15,10 @@ interface ThingsBoardApi {
     @POST("api/auth/login")
     suspend fun login(@Body body: Any): LoginResponse
 
+    // 修改密码：{currentPassword, newPassword}（第二版：首次登录强制改密用，App 代填当前密码）
+    @POST("api/auth/changePassword")
+    suspend fun changePassword(@Body body: Any): Response<ResponseBody>
+
     // ---------- 设备 ----------
     // GET /api/tenant/deviceInfos?pageSize&page&type&textSearch
     @GET("api/tenant/deviceInfos")

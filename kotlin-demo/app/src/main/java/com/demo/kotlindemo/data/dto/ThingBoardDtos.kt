@@ -74,3 +74,16 @@ data class ServiceTask(
     val action: String = "on",
     val status: String = "PENDING"
 )
+
+// 微服务端通用响应：{success, message}（注册/改密标记等接口）
+data class ServiceResponse(
+    val success: Boolean = false,
+    val message: String = ""
+)
+
+// 强制改密标记查询响应：{success, message, mustChange}
+data class MustChangeResponse(
+    val success: Boolean = false,
+    val message: String = "",
+    val mustChange: Boolean = false
+)

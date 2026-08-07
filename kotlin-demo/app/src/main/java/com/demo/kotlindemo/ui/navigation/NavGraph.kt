@@ -15,6 +15,9 @@ import com.demo.kotlindemo.ui.screens.HistoryScreen
 import com.demo.kotlindemo.ui.screens.LoginScreen
 import com.demo.kotlindemo.ui.screens.MainScreen
 import com.demo.kotlindemo.ui.screens.TaskManagementScreen
+import com.demo.kotlindemo.ui.screens.RegisterScreen
+import com.demo.kotlindemo.ui.screens.ChangePasswordScreen
+import com.demo.kotlindemo.ui.screens.FaqScreen
 // 导入 URL 编码（设备名可能含中文）
 import android.net.Uri
 // 导入 ViewModel 创建函数
@@ -31,6 +34,12 @@ import com.demo.kotlindemo.viewmodel.TaskViewModel
 object Routes {
     // 登录页路由名
     const val LOGIN = "login"
+    // 注册页路由名（第二版新增）
+    const val REGISTER = "register"
+    // 修改密码页路由名（第二版新增，带邮箱参数）
+    const val CHANGE_PASSWORD = "change_password/{email}"
+    // 常见问题页路由名（第二版新增）
+    const val FAQ = "faq"
     // 主页面路由名
     const val MAIN  = "main"
     // 任务管理页路由名
@@ -46,6 +55,13 @@ object Routes {
      * @return 包含 fieldId 的实际路由字符串
      */
     fun fieldDetail(fieldId: String) = "field/$fieldId"
+
+    /**
+     * 生成修改密码页的完整路由（邮箱 URL 编码，避免中文等特殊字符）
+     * @param email 当前登录邮箱
+     * @return 包含 email 的实际路由字符串
+     */
+    fun changePassword(email: String) = "change_password/${Uri.encode(email)}"
 
     /**
      * 生成历史数据页的完整路由
@@ -78,15 +94,52 @@ fun AppNavGraph(navController: NavHostController) {
         // 注册登录页路由
         composable(Routes.LOGIN) {
             LoginScreen(
-                // 登录成功后的回调
+                // 登录成功（无需改密）后的回调：进入主页，清空返回栈
                 onLoginSuccess = {
-                    // 跳转到主页，同时清空返回栈
                     navController.navigate(Routes.MAIN) {
-                        // 从返回栈中移除登录页，按返回不会回到登录
                         popUpTo(Routes.LOGIN) { inclusive = true }
                     }
-                }
+                },
+                // 登录成功但需强制改密：跳转改密页
+                onNeedChangePassword = { email ->
+                    navController.navigate(Routes.changePassword(email))
+                },
+                // 注册入口：跳注册页
+                onRegisterClick = { navController.navigate(Routes.REGISTER) },
+                // 常见问题入口：跳 FAQ 页
+                onFaqClick = { navController.navigate(Routes.FAQ) }
             )
+        }
+
+        // 注册页（第二版新增）：注册+自动登录成功 → 跳改密页
+        composable(Routes.REGISTER) {
+            RegisterScreen(
+                onRegisterSuccess = { email ->
+                    navController.navigate(Routes.changePassword(email)) {
+                        popUpTo(Routes.LOGIN) { inclusive = true }
+                    }
+                },
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // 修改密码页（第二版新增）：改密完成 → 进主界面
+        composable(Routes.CHANGE_PASSWORD) { entry ->
+            val email = entry.arguments?.getString("email") ?: ""
+            ChangePasswordScreen(
+                email = email,
+                onSuccess = {
+                    navController.navigate(Routes.MAIN) {
+                        popUpTo(Routes.LOGIN) { inclusive = true }
+                    }
+                },
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        // 常见问题页（第二版新增）
+        composable(Routes.FAQ) {
+            FaqScreen(onBack = { navController.popBackStack() })
         }
 
         // 注册主页面路由

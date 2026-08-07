@@ -16,6 +16,7 @@ import androidx.activity.enableEdgeToEdge              // 让内容延伸到状�
 
 // ── 项目内部导入 ──
 import androidx.navigation.compose.rememberNavController // 创建导航控制器
+import com.demo.kotlindemo.data.api.TokenStore               // JWT 持久化（第二版：重启不掉线）
 import com.demo.kotlindemo.ui.navigation.AppNavGraph     // 项目导航图
 import com.demo.kotlindemo.ui.theme.KotlinDemoTheme      // 项目主题
 
@@ -36,6 +37,10 @@ class MainActivity : ComponentActivity() {
         // 包括状态栏（显示时间/电量那栏）和导航栏（虚拟按键那栏）
         // 配合 Compose 的 WindowInsets 自动处理边距
         enableEdgeToEdge()
+
+        // ── JWT 持久化初始化（第二版：重启不掉线）──
+        // 必须在任何网络请求前调用，AuthInterceptor 冷启动恢复 token 依赖它
+        TokenStore.init(this)
 
         // ── 加载 Compose UI ──
         // setContent { } 是 ComponentActivity 的扩展函数

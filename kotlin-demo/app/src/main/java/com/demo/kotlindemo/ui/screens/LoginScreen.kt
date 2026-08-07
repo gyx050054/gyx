@@ -23,6 +23,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 // 导入网络仓库（登录 API）
 import com.demo.kotlindemo.data.api.ThingsBoardRepository
+// 导入认证仓库（注册/改密标记检查，第二版新增）
+import com.demo.kotlindemo.data.api.AuthRepository
 // 导入协程
 import kotlinx.coroutines.launch
 
@@ -39,11 +41,17 @@ import kotlinx.coroutines.launch
  *  - 登录直接发 API 给 ThingsBoard 服务端验证登录（POST /api/auth/login 获取 JWT）
  *  - 登录成功后自动查询所有电动阀工作状态（GET .../values/timeseries?keys=valveState）
  *
- * @param onLoginSuccess 登录成功的回调函数
+ * @param onLoginSuccess        登录成功且无需改密回调（进入主界面）
+ * @param onNeedChangePassword  登录成功但需强制改密回调（携带邮箱，跳改密页）
+ * @param onRegisterClick       点击「注册」回调
+ * @param onFaqClick            点击「常见问题」回调
  */
 @Composable
 fun LoginScreen(
-    onLoginSuccess: () -> Unit  // 接收一个无参回调
+    onLoginSuccess: () -> Unit,            // 登录成功进入主页
+    onNeedChangePassword: (String) -> Unit, // 需强制改密（携带邮箱）
+    onRegisterClick: () -> Unit,           // 注册入口
+    onFaqClick: () -> Unit                 // 常见问题入口
 ) {
     // ── 表单状态 ──
     // remember 让变量在重组时保持值不变
@@ -56,6 +64,7 @@ fun LoginScreen(
     // ── 网络 ──
     val scope = rememberCoroutineScope()
     val repository = remember { ThingsBoardRepository() }
+    val authRepo = remember { AuthRepository() } // 第二版：强制改密标记检查
 
     // Column 垂直排列所有子元素
     Column(
@@ -148,7 +157,13 @@ fun LoginScreen(
                     try {
                         val resp = repository.login(username.trim(), password)
                         if (resp.token.isNotEmpty()) {
-                            onLoginSuccess()   // 登录成功，进入主页
+                            // 登录成功：查强制改密标记（首次登录强制改密，需求文档 3.2）
+                            val must = authRepo.mustChangePassword(username.trim())
+                            if (must) {
+                                onNeedChangePassword(username.trim())  // 跳改密页
+                            } else {
+                                onLoginSuccess()                        // 直接进主页
+                            }
                         } else {
                             loginError = "登录失败：服务端未返回 token"
                         }
@@ -167,6 +182,16 @@ fun LoginScreen(
         ) {
             // 按钮文字：加载中显示"登录中"，否则显示"登录"
             Text(if (loading) "登录中..." else "登录")
+        }
+
+        // ④ 注册 / 常见问题入口（第二版新增）
+        Spacer(Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            TextButton(onClick = onRegisterClick) { Text("没有账号？注册") }
+            TextButton(onClick = onFaqClick) { Text("常见问题") }
         }
 
         // 把底部按钮推到底部
