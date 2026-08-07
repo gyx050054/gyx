@@ -15,6 +15,9 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 
 /**
@@ -125,16 +128,48 @@ public class ThingsBoardAdminClient {
      * 步骤：取激活 token（activationLinkInfo）→ noauth/activate 设置默认密码
      */
     public void activateUser(String userId, String password) {
-        // ① 获取激活 token
+        // ① 获取激活信息：TB 4.x 的 activationLinkInfo 响应结构为
+        //    {"value":"http://.../api/noauth/activate?activateToken=xxx","ttlMs":...}
+        //    激活 token 嵌在 value 的 query 参数中（无独立 activateToken 字段），需解析提取
         ResponseEntity<JsonNode> info = getJson(
                 props.getBaseUrl() + "/api/user/" + userId + "/activationLinkInfo", getToken(), JsonNode.class);
-        String activateToken = info.getBody().get("activateToken").asText();
+        String activateUrl = info.getBody().get("value").asText();
+        String activateToken = extractQueryParam(activateUrl, "activateToken");
+        if (activateToken == null || activateToken.isEmpty()) {
+            throw new IllegalStateException("激活 URL 缺少 activateToken 参数: " + activateUrl);
+        }
         // ② 激活并设置默认密码
         ObjectNode body = mapper.createObjectNode();
         body.put("activateToken", activateToken);
         body.put("password", password);
         postJson(props.getBaseUrl() + "/api/noauth/activate", null, body, JsonNode.class);
         log.info("用户 {} 已激活并设置初始密码", userId);
+    }
+
+    /**
+     * 从 URL 中提取指定 query 参数（自动处理 URL 编码）
+     *
+     * @param url  完整 URL（形如 http://host/api/noauth/activate?activateToken=xxx）
+     * @param name 参数名
+     * @return 参数值；不存在时返回 null
+     */
+    private String extractQueryParam(String url, String name) {
+        try {
+            URI uri = new URI(url);
+            String query = uri.getRawQuery();
+            if (query == null) {
+                return null;
+            }
+            for (String pair : query.split("&")) {
+                int eq = pair.indexOf('=');
+                if (eq > 0 && pair.substring(0, eq).equals(name)) {
+                    return URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("解析激活 URL 失败: {}", e.getMessage());
+        }
+        return null;
     }
 
     // ---------- 私有工具：统一 HTTP 构造，消除重复代码 ----------
