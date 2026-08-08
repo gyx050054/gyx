@@ -24,6 +24,10 @@ interface TaskServiceApi {
     @DELETE("api/tasks/{id}")
     suspend fun deleteTask(@Path("id") id: Long): TaskCreateResponse
 
+    // 删除设备时取消其未完成任务（第二版）：DELETE /api/tasks/device/{deviceId}
+    @DELETE("api/tasks/device/{deviceId}")
+    suspend fun deleteDeviceTasks(@Path("deviceId") deviceId: String): ServiceResponse
+
     // ---------- 认证（第二版新增：注册 / 强制改密标记） ----------
 
     // 租户注册：{email} → {success, message}

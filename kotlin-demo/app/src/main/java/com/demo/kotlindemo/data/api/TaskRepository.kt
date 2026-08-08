@@ -3,6 +3,7 @@ package com.demo.kotlindemo.data.api
 
 import com.demo.kotlindemo.data.dto.ServiceTask
 import com.demo.kotlindemo.data.dto.TaskCreateResponse
+import com.demo.kotlindemo.data.dto.ServiceResponse
 
 /**
  * 微服务端任务仓库（由原 FarmRepository 拆分出的「任务域」部分）
@@ -54,4 +55,7 @@ class TaskRepository {
 
     /** 删除（取消）任务：未开始直接取消；已开始由微服务端先发暂停 */
     suspend fun deleteTask(taskId: Long): TaskCreateResponse = taskApi.deleteTask(taskId)
+
+    /** 删除设备时取消其全部未完成任务（第二版：APP 删除设备前调用） */
+    suspend fun deleteDeviceTasks(deviceId: String): ServiceResponse = taskApi.deleteDeviceTasks(deviceId)
 }

@@ -50,6 +50,13 @@ data class AssetProfileDto(
     val type: String = ""
 )
 
+// 设备配置信息（deviceProfileInfos 返回项；新增设备需指定 VALVE / TEMPERATURE_HUMIDITY profile）
+data class DeviceProfileDto(
+    val id: EntityId = EntityId(),
+    val name: String = "",
+    val type: String = ""
+)
+
 // 实体关系（GET /api/relations/from/... 返回项）
 data class EntityRelationDto(
     val from: EntityId = EntityId(),

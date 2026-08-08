@@ -29,6 +29,26 @@ interface ThingsBoardApi {
         @Query("textSearch") textSearch: String? = null
     ): PageData<DeviceInfoDto>
 
+    // 新增设备（第二版）：POST /api/device {"name","deviceProfileId":{...}}，创建后为自由设备
+    @POST("api/device")
+    suspend fun createDevice(@Body body: Any): DeviceInfoDto
+
+    // 查询设备配置（新增设备需 VALVE / TEMPERATURE_HUMIDITY 的 profileId）
+    @GET("api/deviceProfileInfos")
+    suspend fun getDeviceProfiles(
+        @Query("pageSize") pageSize: Int = 100,
+        @Query("page") page: Int = 0,
+        @Query("textSearch") textSearch: String? = null
+    ): PageData<DeviceProfileDto>
+
+    // 删除设备（第二版）：DELETE /api/device/{deviceId}
+    @DELETE("api/device/{deviceId}")
+    suspend fun deleteDevice(@Path("deviceId") deviceId: String): Response<ResponseBody>
+
+    // 建立挂载关系（第二版）：POST /api/relation {from:ASSET田块, to:DEVICE设备, type:Contains}
+    @POST("api/relation")
+    suspend fun createRelation(@Body body: Any): Response<ResponseBody>
+
     // ---------- 资产（田块） ----------
     // GET /api/tenant/assetInfos
     @GET("api/tenant/assetInfos")

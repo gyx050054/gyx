@@ -15,6 +15,8 @@ import com.demo.kotlindemo.data.model.DeviceType
 import com.demo.kotlindemo.data.model.Field
 // 导入网络仓库
 import com.demo.kotlindemo.data.api.ThingsBoardRepository
+// 导入微服务端任务仓库（删除设备联动取消任务用）
+import com.demo.kotlindemo.data.api.TaskRepository
 // 导入协程
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +33,8 @@ import kotlin.random.Random
 class FarmViewModel : ViewModel() {
 
     private val repository = ThingsBoardRepository()
+    // 微服务端任务仓库：删除设备时先取消其未完成任务（第二版）
+    private val taskRepository = TaskRepository()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // ── 田块列表（API 加载后填充）──
@@ -179,6 +183,73 @@ class FarmViewModel : ViewModel() {
             }
             loadFields()  // 删除后刷新列表（被删田块消失，设备变自由设备）
             onResult(allOk, if (allOk) "已删除 ${ids.size} 块田块" else "部分田块删除失败")
+        }
+    }
+
+    // ── 设备管理（第二版新增：新增/挂载/删除设备）──
+
+    /**
+     * 新增设备（租户管理员）：创建后为自由设备，返回 accessToken 供凭证弹窗展示
+     * @param name 设备名称
+     * @param type 设备类型：VALVE / TEMPERATURE_HUMIDITY
+     * @param onResult 回调 (是否成功, 提示信息, accessToken?)
+     */
+    fun createDevice(name: String, type: String, onResult: (Boolean, String, String?) -> Unit) {
+        scope.launch {
+            try {
+                val token = repository.createDevice(name.trim(), type)
+                if (token != null) {
+                    loadAllDevices()  // 刷新设备列表（新设备出现在"全部设备"）
+                    onResult(true, "设备创建成功", token)
+                } else {
+                    onResult(false, "创建设备失败（设备类型配置未找到）", null)
+                }
+            } catch (e: Exception) {
+                onResult(false, "创建设备失败：${e.message}", null)
+            }
+        }
+    }
+
+    /**
+     * 挂载设备到田块（租户管理员，两种方式共用）
+     * @param deviceId 设备 ID
+     * @param fieldId  目标田块 ID
+     */
+    fun mountDevice(deviceId: String, fieldId: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        scope.launch {
+            try {
+                val ok = repository.mountDevice(deviceId, fieldId)
+                if (ok) {
+                    loadAllDevices()  // 挂载后刷新：该设备从自由设备变为已挂载
+                    loadFields()      // 田块设备数变化
+                }
+                onResult(ok, if (ok) "挂载成功" else "挂载失败")
+            } catch (e: Exception) {
+                onResult(false, "挂载失败：${e.message}")
+            }
+        }
+    }
+
+    /**
+     * 删除设备（租户管理员）：先取消该设备未完成任务（微服务端），再删除 TB 设备
+     * @param deviceId 设备 ID
+     */
+    fun deleteDevice(deviceId: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        scope.launch {
+            try {
+                // ① 取消该设备所有未完成任务（微服务端 DELETE /api/tasks/device/{deviceId}）
+                //    失败也继续：任务可能已不存在，不影响设备删除
+                runCatching { taskRepository.deleteDeviceTasks(deviceId) }
+                // ② 删除 TB 设备（同时自动清理挂载关系）
+                val ok = repository.deleteDevice(deviceId)
+                if (ok) {
+                    devices.removeAll { it.id == deviceId }  // 本地移除
+                    loadFields()  // 田块设备数更新
+                }
+                onResult(ok, if (ok) "设备已删除，其未完成任务已取消" else "删除设备失败")
+            } catch (e: Exception) {
+                onResult(false, "删除设备失败：${e.message}")
+            }
         }
     }
 

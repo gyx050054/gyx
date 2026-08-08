@@ -121,6 +121,59 @@ class ThingsBoardRepository {
         api.deleteAsset(fieldId).isSuccessful
     }
 
+    // ---------- 设备管理（第二版：新增/挂载/删除） ----------
+
+    /**
+     * 新增设备（第二版，租户管理员专属）：创建后为「自由设备」（不归属任何田块）
+     * 流程：按类型查 DeviceProfile（VALVE / TEMPERATURE_HUMIDITY）→ POST /api/device → 取 accessToken
+     *
+     * @param name 设备名称
+     * @param type 设备类型：VALVE（电动阀）/ TEMPERATURE_HUMIDITY（温湿度计）
+     * @return accessToken（凭证，配置到真设备用）；失败返回 null
+     */
+    suspend fun createDevice(name: String, type: String): String? = withContext(Dispatchers.IO) {
+        // 类型 → DeviceProfile 搜索词（与 tb_setup 建的 profile 同名）
+        val profileSearch = if (type == "VALVE") "VALVE" else "TEMPERATURE_HUMIDITY"
+        val profileId = api.getDeviceProfiles(pageSize = 100, page = 0, textSearch = profileSearch).data
+            .firstOrNull { it.name == profileSearch }?.id?.id ?: return@withContext null
+        val body = mapOf(
+            "name" to name,
+            "deviceProfileId" to mapOf("entityType" to "DEVICE_PROFILE", "id" to profileId)
+        )
+        val deviceId = api.createDevice(body).id.id
+        // 取设备凭证（accessToken），供 App 展示给用户配置真设备
+        api.getDeviceCredentials(deviceId)["credentialsId"]
+    }
+
+    /**
+     * 挂载设备到田块（第二版：两种挂载方式共用）
+     * 流程：POST /api/relation {from=ASSET田块, to=DEVICE设备, type=Contains}
+     *
+     * @param deviceId 设备 ID
+     * @param fieldId  目标田块 ID
+     * @return true=挂载成功
+     */
+    suspend fun mountDevice(deviceId: String, fieldId: String): Boolean = withContext(Dispatchers.IO) {
+        val body = mapOf(
+            "from" to mapOf("entityType" to "ASSET", "id" to fieldId),
+            "type" to "Contains",
+            "to" to mapOf("entityType" to "DEVICE", "id" to deviceId)
+        )
+        api.createRelation(body).isSuccessful
+    }
+
+    /**
+     * 删除设备（第二版，租户管理员专属）：DELETE /api/device/{deviceId}
+     * TB 删除设备会自动清理其挂载关系（设备消失、田块设备数减少）
+     * 注意：取消该设备未完成任务由 ViewModel 编排（先调微服务端 DELETE /api/tasks/device/{id}）
+     *
+     * @param deviceId 设备 ID
+     * @return true=删除成功
+     */
+    suspend fun deleteDevice(deviceId: String): Boolean = withContext(Dispatchers.IO) {
+        api.deleteDevice(deviceId).isSuccessful
+    }
+
     /** 开关阀门（RPC oneway，不等待设备回执） */
     suspend fun toggleValve(deviceId: String, on: Boolean): Boolean = withContext(Dispatchers.IO) {
         val resp = api.sendRpc(

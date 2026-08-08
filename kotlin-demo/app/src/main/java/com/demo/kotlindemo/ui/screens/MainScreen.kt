@@ -48,6 +48,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.border
 // 导入颜色类
 import androidx.compose.ui.graphics.Color
+// 导入剪贴板（复制设备凭证用）
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 // 导入字重
 import androidx.compose.ui.text.font.FontWeight
 // 导入文字溢出处理
@@ -128,6 +131,18 @@ fun MainScreen(
     // 操作结果提示（新增/删除完成后 Snackbar 或文本提示）
     var fieldOpMessage by remember { mutableStateOf<String?>(null) }
 
+    // ── 设备管理状态（第二版新增：新增/挂载/删除设备）──
+    // 新增设备弹窗：true=显示
+    var showAddDeviceDialog by remember { mutableStateOf(false) }
+    // 设备凭证弹窗：非 null=显示（携带新设备 accessToken）
+    var newDeviceToken by remember { mutableStateOf<String?>(null) }
+    // 挂载弹窗目标设备：非 null=显示（对自由设备选田块挂载）
+    var mountDeviceTarget by remember { mutableStateOf<Device?>(null) }
+    // 删除确认弹窗目标设备：非 null=显示
+    var deleteDeviceTarget by remember { mutableStateOf<Device?>(null) }
+    // 设备操作结果提示
+    var devOpMessage by remember { mutableStateOf<String?>(null) }
+
     // Scaffold：Material3 页面骨架
     Scaffold(
         // ① 顶部标题栏
@@ -143,8 +158,7 @@ fun MainScreen(
                 // 右侧操作按钮
                 actions = {
                     // 田块 tab 的田块管理按钮（第二版新增）
-                    if (currentTab == MainTab.FIELDS) {
-                        if (selectionMode) {
+                    if (currentTab == MainTab.FIELDS) {                        if (selectionMode) {
                             // 选择模式：取消 + 删除选中
                             IconButton(onClick = { selectionMode = false; selectedFieldIds = emptySet() }) {
                                 Icon(Icons.Default.Close, contentDescription = "取消选择")
@@ -163,6 +177,12 @@ fun MainScreen(
                             IconButton(onClick = { selectionMode = true; selectedFieldIds = emptySet() }) {
                                 Icon(Icons.Default.Delete, contentDescription = "删除田块")
                             }
+                        }
+                    }
+                    // 设备 tab：新增设备入口（第二版）
+                    if (currentTab == MainTab.DEVICES) {
+                        IconButton(onClick = { showAddDeviceDialog = true }) {
+                            Icon(Icons.Default.Add, contentDescription = "新增设备")
                         }
                     }
                     // 任务管理入口按钮
@@ -247,7 +267,9 @@ fun MainScreen(
                     onLongPress = { showSwitchDialog = it },  // 长按弹出开关弹窗
                     onTimingTask = { showTimeDialog = it },   // 弹出定时任务弹窗
                     onBatchClick = { showBatchDialog = true },  // 弹出批量操作弹窗
-                    onHistoryClick = { id, name -> onDeviceHistoryClick(id, name) }  // 查看历史
+                    onHistoryClick = { id, name -> onDeviceHistoryClick(id, name) },  // 查看历史
+                    onMount = { mountDeviceTarget = it },     // 挂载到田块（自由设备）
+                    onDelete = { deleteDeviceTarget = it }    // 删除设备
                 )
             }
         }
@@ -355,6 +377,76 @@ fun MainScreen(
             modifier = Modifier.padding(16.dp),
             action = {
                 TextButton(onClick = { fieldOpMessage = null }) { Text("知道了") }
+            }
+        ) { Text(msg) }
+    }
+
+    // ── 新增设备弹窗（第二版：名称 + 类型单选，创建后为自由设备）──
+    if (showAddDeviceDialog) {
+        AddDeviceDialog(
+            onDismiss = { showAddDeviceDialog = false },         // 取消
+            onConfirm = { name, type ->                          // 确认创建
+                farmViewModel.createDevice(name, type) { ok, msg, token ->
+                    devOpMessage = msg
+                    if (ok) {
+                        showAddDeviceDialog = false
+                        newDeviceToken = token                   // 弹出凭证展示
+                    }
+                }
+            }
+        )
+    }
+
+    // ── 设备凭证弹窗（第二版：展示 accessToken + 复制按钮）──
+    newDeviceToken?.let { token ->
+        TokenDialog(
+            token = token,
+            onDismiss = { newDeviceToken = null }
+        )
+    }
+
+    // ── 挂载到田块弹窗（第二版：自由设备选田块）──
+    mountDeviceTarget?.let { device ->
+        MountFieldDialog(
+            fields = farmViewModel.fields,                        // 田块列表
+            onDismiss = { mountDeviceTarget = null },             // 取消
+            onConfirm = { fieldId ->                              // 确认挂载
+                farmViewModel.mountDevice(device.id, fieldId) { ok, msg -> devOpMessage = msg }
+                mountDeviceTarget = null
+            }
+        )
+    }
+
+    // ── 删除设备二次确认弹窗（第二版：联动取消未完成任务）──
+    deleteDeviceTarget?.let { device ->
+        AlertDialog(
+            onDismissRequest = { deleteDeviceTarget = null },
+            title = { Text("确认删除设备？") },
+            text = {
+                Text(
+                    "将删除设备「${device.name}」，其未完成的定时任务将被取消，且不可恢复。是否继续？"
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deleteDeviceTarget = null
+                        farmViewModel.deleteDevice(device.id) { ok, msg -> devOpMessage = msg }
+                    }
+                ) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteDeviceTarget = null }) { Text("取消") }
+            }
+        )
+    }
+
+    // ── 设备操作结果提示 ──
+    devOpMessage?.let { msg ->
+        Snackbar(
+            modifier = Modifier.padding(16.dp),
+            action = {
+                TextButton(onClick = { devOpMessage = null }) { Text("知道了") }
             }
         ) { Text(msg) }
     }
@@ -543,7 +635,9 @@ private fun DevicesListContent(
     onLongPress: (Device) -> Unit,    // 长按/更多回调
     onTimingTask: (Device) -> Unit,   // 添加定时任务回调
     onBatchClick: () -> Unit,          // 批量操作回调
-    onHistoryClick: (String, String) -> Unit  // 查看历史回调
+    onHistoryClick: (String, String) -> Unit,  // 查看历史回调
+    onMount: (Device) -> Unit,         // 挂载到田块（自由设备，第二版）
+    onDelete: (Device) -> Unit         // 删除设备（第二版）
 ) {
     LazyColumn(
         contentPadding = PaddingValues(12.dp),  // 列表边距
@@ -568,7 +662,9 @@ private fun DevicesListContent(
                 onToggle = { onToggle(device) },   // 切换开关
                 onMore = { onLongPress(device) },  // 更多操作
                 onTiming = { onTimingTask(device) }, // 添加定时任务
-                onHistory = { onHistoryClick(device.id, device.name) } // 查看历史
+                onHistory = { onHistoryClick(device.id, device.name) }, // 查看历史
+                onMount = { onMount(device) },      // 挂载到田块（自由设备）
+                onDelete = { onDelete(device) }     // 删除设备
             )
         }
 
@@ -580,6 +676,7 @@ private fun DevicesListContent(
 /**
  * 单个设备卡片
  * 显示设备图标、名称、状态、开关；温湿度计点击卡片可查看历史数据
+ * 第二版新增：自由设备可「挂载到田块」，所有设备可「删除」（管理员操作）
  */
 @Composable
 private fun DeviceCard(
@@ -587,7 +684,9 @@ private fun DeviceCard(
     onToggle: () -> Unit,    // 开关切换回调
     onMore: () -> Unit,      // 更多操作回调
     onTiming: () -> Unit,     // 定时任务回调
-    onHistory: () -> Unit     // 查看历史回调
+    onHistory: () -> Unit,    // 查看历史回调
+    onMount: () -> Unit,      // 挂载到田块回调（自由设备）
+    onDelete: () -> Unit      // 删除设备回调
 ) {
     Card(
         modifier = Modifier
@@ -674,8 +773,169 @@ private fun DeviceCard(
                     ) { Text("添加定时任务", style = MaterialTheme.typography.bodySmall) }
                 }
             }
+
+            // ── 第三行：设备管理操作（第二版新增：挂载自由设备 / 删除设备）──
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // 自由设备（未归属田块）显示「挂载到田块」
+                if (device.fieldId.isNullOrEmpty()) {
+                    OutlinedButton(
+                        onClick = onMount,
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) { Text("挂载到田块", style = MaterialTheme.typography.bodySmall) }
+                }
+                // 删除设备（管理员操作，所有设备可见）
+                OutlinedButton(
+                    onClick = onDelete,
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) { Text("删除", style = MaterialTheme.typography.bodySmall) }
+            }
         }
     }
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// 设备管理弹窗（第二版新增）
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * 新增设备弹窗（第二版）：名称 + 类型单选（电动阀/温湿度计）
+ * 创建后为自由设备（不归属任何田块），接入凭证在下一步弹窗展示
+ */
+@Composable
+private fun AddDeviceDialog(
+    onDismiss: () -> Unit,             // 取消
+    onConfirm: (String, String) -> Unit // 确认（名称, 类型）
+) {
+    // 输入状态
+    var name by remember { mutableStateOf("") }
+    // 类型单选：默认电动阀
+    var type by remember { mutableStateOf("VALVE") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("新增设备") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("设备名称（必填）") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(16.dp))
+                Text("设备类型", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(8.dp))
+                // 类型单选：仅支持电动阀 / 温度湿度计（需求文档：类型限定）
+                Row {
+                    listOf("VALVE" to "电动阀", "TEMPERATURE_HUMIDITY" to "温度湿度计").forEach { (v, label) ->
+                        FilterChip(
+                            selected = type == v,
+                            onClick = { type = v },
+                            label = { Text(label) },
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "创建后为自由设备，需挂载到田块；接入凭证将在下一步展示",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (name.isNotBlank()) onConfirm(name.trim(), type) },
+                enabled = name.isNotBlank()
+            ) { Text("创建") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+    )
+}
+
+/**
+ * 设备凭证弹窗（第二版）：展示 accessToken + 一键复制
+ * 提示用户将凭证配置到真设备（需求文档：凭证展示 + 复制按钮）
+ */
+@Composable
+private fun TokenDialog(token: String, onDismiss: () -> Unit) {
+    val clipboard = LocalClipboardManager.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("设备接入凭证") },
+        text = {
+            Column {
+                Text(
+                    "请复制下面的接入凭证（Access Token），配置到你的设备后，" +
+                        "设备数据会自动出现在系统里：",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(12.dp))
+                // 凭证内容（只读，可全选复制）
+                OutlinedTextField(
+                    value = token,
+                    onValueChange = {},
+                    readOnly = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                clipboard.setText(AnnotatedString(token))  // 复制到剪贴板
+                onDismiss()
+            }) { Text("复制并关闭") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
+    )
+}
+
+/**
+ * 挂载到田块弹窗（第二版）：为自由设备选择目标田块
+ * 对应需求文档「挂载方式二：设备页选田块」
+ */
+@Composable
+private fun MountFieldDialog(
+    fields: List<Field>,         // 可选田块列表
+    onDismiss: () -> Unit,       // 取消
+    onConfirm: (String) -> Unit  // 确认（田块 ID）
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("挂载到田块") },
+        text = {
+            if (fields.isEmpty()) {
+                Text("暂无可挂载的田块，请先新增田块")
+            } else {
+                Column {
+                    fields.forEach { f ->
+                        TextButton(
+                            onClick = { onConfirm(f.id) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                "${f.name}（${f.deviceCount} 台设备）",
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+    )
 }
 
 

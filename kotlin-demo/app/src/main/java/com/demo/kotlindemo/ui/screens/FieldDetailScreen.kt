@@ -83,6 +83,8 @@ fun FieldDetailScreen(
     var showBatchDialog by remember { mutableStateOf(false) }
     // 定时任务弹窗目标：null=不显示，非null=要设置定时任务的设备
     var showTimeDialog by remember { mutableStateOf<Device?>(null) }
+    // 挂载自由设备弹窗：true=显示（第二版：田块详情挂自由设备）
+    var showMountDevicesDialog by remember { mutableStateOf(false) }
 
     // 每 10 秒自动刷新设备状态（文档 3.7）：
     // 进入详情页先按田块加载设备（relations → 遥测），之后轮询该田块设备
@@ -174,6 +176,12 @@ fun FieldDetailScreen(
                                 modifier = Modifier.weight(1f)
                             ) { Text("任务管理", style = MaterialTheme.typography.bodyMedium) }
                         }
+                        // 挂载自由设备入口（第二版：方式一，田块详情挂载）
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { showMountDevicesDialog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("挂载自由设备", style = MaterialTheme.typography.bodyMedium) }
                     }
                 }
             }
@@ -270,6 +278,25 @@ fun FieldDetailScreen(
             }
         )
     }
+
+    // ── 挂载自由设备弹窗（第二版：方式一，田块详情挂载）──
+    if (showMountDevicesDialog) {
+        MountDevicesDialog(
+            freeDevices = farmViewModel.devices.filter { it.fieldId.isNullOrEmpty() },  // 自由设备
+            onDismiss = { showMountDevicesDialog = false },
+            onConfirm = { deviceId ->
+                farmViewModel.mountDevice(deviceId, fieldId) { ok, msg ->
+                    if (ok) {
+                        // 挂载成功：刷新本田块设备 + 全局设备 + 田块设备数
+                        farmViewModel.loadFieldDevices(fieldId)
+                        farmViewModel.loadAllDevices()
+                        farmViewModel.loadFields()
+                    }
+                }
+                showMountDevicesDialog = false
+            }
+        )
+    }
 }
 
 /**
@@ -350,6 +377,40 @@ private fun FieldDeviceRow(
             ) { Text("⏰ 添加定时任务", style = MaterialTheme.typography.bodySmall) }
         }
     }
+}
+
+/**
+ * 挂载自由设备弹窗（第二版：方式一）
+ * 列出全部自由设备（未归属田块），点选后挂载到当前田块
+ */
+@Composable
+private fun MountDevicesDialog(
+    freeDevices: List<Device>,   // 自由设备列表
+    onDismiss: () -> Unit,       // 取消
+    onConfirm: (String) -> Unit  // 确认（设备 ID）
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("挂载自由设备到本田块") },
+        text = {
+            if (freeDevices.isEmpty()) {
+                Text("暂无自由设备（可在「设备」页新增设备）")
+            } else {
+                Column {
+                    freeDevices.forEach { d ->
+                        TextButton(
+                            onClick = { onConfirm(d.id) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(d.name, modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+    )
 }
 
 // 田块详情页用的上报时间格式化器：HH:mm:ss（统一用 TimeFormats 单例）
