@@ -109,9 +109,9 @@ interface ThingsBoardApi {
         @Body body: Any
     ): Response<ResponseBody>
 
-    // ---------- 设备凭据 ----------
+    // 获取设备凭证（accessToken；响应含嵌套 id 对象，用 DTO 解析避免 Map 解析失败）
     @GET("api/device/{deviceId}/credentials")
-    suspend fun getDeviceCredentials(@Path("deviceId") deviceId: String): Map<String, String>
+    suspend fun getDeviceCredentials(@Path("deviceId") deviceId: String): DeviceCredentialsDto
 
     // ---------- 单设备查询（关系解析后按 id 取设备信息） ----------
     @GET("api/device/{deviceId}")

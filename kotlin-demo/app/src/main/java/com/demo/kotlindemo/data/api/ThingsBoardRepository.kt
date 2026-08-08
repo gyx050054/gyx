@@ -77,15 +77,38 @@ class ThingsBoardRepository {
         }
     }
 
-    /** 获取全部设备（type=VALVE 或 TEMPERATURE_HUMIDITY，用于"设备"页） */
+    /**
+     * 获取全部设备（type=VALVE 或 TEMPERATURE_HUMIDITY，用于"设备"页）
+     * 第二版修复：补全 fieldId（设备所属田块），用于区分「自由设备」与「已挂载设备」
+     */
     suspend fun loadAllDevices(): List<Device> = withContext(Dispatchers.IO) {
         val valves = api.getDevices(pageSize = AppConfig.PAGE_SIZE, page = 0, type = "VALVE").data
         val sensors = api.getDevices(pageSize = AppConfig.PAGE_SIZE, page = 0, type = "TEMPERATURE_HUMIDITY").data
+        // 构建「设备ID → 田块ID」映射（遍历全部田块 Contains 关系）
+        val fieldIdByDevice = buildFieldIdByDevice()
         coroutineScope {
             (valves + sensors).map { info ->
-                async { fetchDeviceWithTelemetry(info, null) }
+                async { fetchDeviceWithTelemetry(info, fieldIdByDevice[info.id.id]) }
             }.awaitAll()
         }
+    }
+
+    /**
+     * 构建「设备ID → 田块ID」映射：遍历全部田块的 Contains 关系
+     * 用途：「设备」页区分自由设备（fieldId 为空）与已挂载设备（第二版）
+     */
+    private suspend fun buildFieldIdByDevice(): Map<String, String> = withContext(Dispatchers.IO) {
+        val fields = api.getAssets(pageSize = AppConfig.PAGE_SIZE, page = 0).data
+        val map = mutableMapOf<String, String>()
+        for (field in fields) {
+            val relations = api.getAssetRelations(field.id.id)
+            for (r in relations) {
+                if (r.to.entityType == "DEVICE") {
+                    map[r.to.id] = field.id.id
+                }
+            }
+        }
+        map
     }
 
     /** 读取单台设备（按 id，用于关系解析后的详情） */
@@ -142,7 +165,7 @@ class ThingsBoardRepository {
         )
         val deviceId = api.createDevice(body).id.id
         // 取设备凭证（accessToken），供 App 展示给用户配置真设备
-        api.getDeviceCredentials(deviceId)["credentialsId"]
+        api.getDeviceCredentials(deviceId).credentialsId
     }
 
     /**
