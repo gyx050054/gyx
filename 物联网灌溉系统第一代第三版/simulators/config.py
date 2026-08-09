@@ -14,7 +14,7 @@ import os
 # ---------- MQTT 连接 ----------
 # 说明：localhost 被 Windows mosquitto 服务抢占 127.0.0.1:1883，
 #       故改连本机局域网 IP 直达 Docker 端口 -> ThingsBoard（详见 git 提交 fabb336）
-HOST = "192.168.50.138"
+HOST = "localhost"  # TB 在本地 Docker，MQTT 1883 直连（原 192.168.50.138 为本机旧 IP，DHCP 变更后失效）
 PORT = 1883
 KEEPALIVE = 60
 
