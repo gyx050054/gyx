@@ -41,14 +41,19 @@ class ThingsBoardRepository {
         if (resp.token.isNotEmpty()) {
             TokenStore.save(resp.token)
         }
+        // 切换账号时重置角色缓存，下次查询重新拉取（避免跨账号串号）
+        cachedAuthority = null
+        cachedCustomerId = null
         return resp
     }
 
-    /** 退出登录：清空内存与持久化的 JWT */
+    /** 退出登录：清空内存与持久化的 JWT + 角色缓存 */
     fun logout() {
         AuthInterceptor.token = null
         TokenStore.clear()
         TokenStore.resetTasksVisited()  // 任务红点状态重置（第二版）
+        cachedAuthority = null          // 角色缓存一并清掉（避免切换账号串号）
+        cachedCustomerId = null
     }
 
     /** 获取所有田块（资产列表 + 每个田块的设备数）；员工(CUSTOMER_USER)只能看到被分配的 */
