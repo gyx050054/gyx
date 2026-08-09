@@ -14,6 +14,7 @@
         theme        : XML 层面的基础主题（与 Compose 主题分开）
     -->
     <application
+        android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
         android:label="智能灌溉田块管理APP"
         android:supportsRtl="true"
