@@ -62,6 +62,18 @@ public class AuthController {
         return resp;
     }
 
+    /** 登记强制改密（员工账号创建后）：POST /api/auth/mark-must-change {"email": "..."} */
+    @PostMapping("/mark-must-change")
+    public ResponseEntity<JsonNode> markMustChange(@RequestBody JsonNode body) {
+        String email = body.path("email").asText("");
+        try {
+            authService.markMustChangePassword(email);
+            return ResponseEntity.ok(ok(true, "已登记强制改密"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(ok(false, e.getMessage()));
+        }
+    }
+
     /** 标记已完成改密：POST /api/auth/pwd-changed {"email": "..."} */
     @PostMapping("/pwd-changed")
     public ResponseEntity<JsonNode> pwdChanged(@RequestBody JsonNode body) {

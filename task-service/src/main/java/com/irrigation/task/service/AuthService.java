@@ -99,4 +99,20 @@ public class AuthService {
         pwdFlagRepository.save(flag);
         log.info("邮箱 {} 已标记完成改密", email);
     }
+
+    /**
+     * 登记强制改密（第二版新增：App 直连 TB 创建员工账号后调用）
+     * 用途：员工账号用初始密码登录后，与注册账号一样走首次强制改密流程
+     */
+    @Transactional
+    public void markMustChangePassword(String email) {
+        if (email == null || email.isBlank()) {
+            throw new IllegalArgumentException("邮箱不能为空");
+        }
+        email = email.trim();
+        UserPwdFlag flag = pwdFlagRepository.findByEmail(email).orElse(new UserPwdFlag(email, true));
+        flag.setMustChangePassword(true);
+        pwdFlagRepository.save(flag);
+        log.info("邮箱 {} 已登记强制改密（员工账号创建）", email);
+    }
 }

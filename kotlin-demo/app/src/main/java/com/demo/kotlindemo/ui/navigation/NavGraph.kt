@@ -18,6 +18,7 @@ import com.demo.kotlindemo.ui.screens.TaskManagementScreen
 import com.demo.kotlindemo.ui.screens.RegisterScreen
 import com.demo.kotlindemo.ui.screens.ChangePasswordScreen
 import com.demo.kotlindemo.ui.screens.FaqScreen
+import com.demo.kotlindemo.ui.screens.UserManagementScreen
 // 导入 URL 编码（设备名可能含中文）
 import android.net.Uri
 // 导入 ViewModel 创建函数
@@ -25,6 +26,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 // 导入自定义 ViewModel
 import com.demo.kotlindemo.viewmodel.FarmViewModel
 import com.demo.kotlindemo.viewmodel.TaskViewModel
+import com.demo.kotlindemo.viewmodel.UserViewModel
 
 /**
  * 路由常量对象
@@ -40,6 +42,8 @@ object Routes {
     const val CHANGE_PASSWORD = "change_password/{email}"
     // 常见问题页路由名（第二版新增）
     const val FAQ = "faq"
+    // 使用者管理页路由名（第二版新增）
+    const val USER_MANAGE = "user_manage"
     // 主页面路由名
     const val MAIN  = "main"
     // 任务管理页路由名
@@ -85,6 +89,8 @@ fun AppNavGraph(navController: NavHostController) {
     val farmViewModel: FarmViewModel = viewModel()
     // 创建共享的 TaskViewModel，多个页面共用一个实例
     val taskViewModel: TaskViewModel = viewModel()
+    // 创建共享的 UserViewModel（第二版：员工管理）
+    val userViewModel: UserViewModel = viewModel()
 
     // NavHost 是导航容器，startDestination 是起始页
     NavHost(
@@ -142,11 +148,21 @@ fun AppNavGraph(navController: NavHostController) {
             FaqScreen(onBack = { navController.popBackStack() })
         }
 
+        // 使用者管理页（第二版新增：员工账号管理）
+        composable(Routes.USER_MANAGE) {
+            UserManagementScreen(
+                userViewModel = userViewModel,   // 用户 ViewModel
+                farmViewModel = farmViewModel,   // 农田 ViewModel（分配田块/设备用）
+                onBack = { navController.popBackStack() }
+            )
+        }
+
         // 注册主页面路由
         composable(Routes.MAIN) {
             MainScreen(
                 farmViewModel = farmViewModel,   // 传入农田 ViewModel
                 taskViewModel = taskViewModel,   // 传入任务 ViewModel
+                userViewModel = userViewModel,   // 传入用户 ViewModel（第二版）
                 onLogout = {                     // 退出登录回调
                     navController.navigate(Routes.LOGIN) {
                         popUpTo(Routes.MAIN) { inclusive = true }
@@ -160,6 +176,9 @@ fun AppNavGraph(navController: NavHostController) {
                 },
                 onDeviceHistoryClick = { deviceId, deviceName ->   // 点击温湿度计查看历史
                     navController.navigate(Routes.history(deviceId, deviceName))
+                },
+                onUserManageClick = {            // 使用者管理入口（第二版）
+                    navController.navigate(Routes.USER_MANAGE)
                 }
             )
         }

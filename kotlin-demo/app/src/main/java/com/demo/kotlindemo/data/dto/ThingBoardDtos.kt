@@ -63,6 +63,25 @@ data class DeviceCredentialsDto(
     val credentialsType: String = ""
 )
 
+// 当前用户信息（/api/auth/user 返回项）：用于判断身份（TENANT_ADMIN / CUSTOMER_USER）
+data class CurrentUserDto(
+    val authority: String = "",
+    val email: String = ""
+)
+
+// 客户（员工/使用者）信息：{id, name, ...}
+data class CustomerDto(
+    val id: EntityId = EntityId(),
+    val name: String = "",
+    val title: String = ""
+)
+
+// 用户激活信息（activationLinkInfo 返回项）：activateToken 在 value 的 URL 参数里
+data class ActivationInfoDto(
+    val value: String = "",
+    val ttlMs: Long = 0
+)
+
 // 实体关系（GET /api/relations/from/... 返回项）
 data class EntityRelationDto(
     val from: EntityId = EntityId(),

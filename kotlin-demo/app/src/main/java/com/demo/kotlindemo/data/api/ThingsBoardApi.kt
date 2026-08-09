@@ -116,4 +116,58 @@ interface ThingsBoardApi {
     // ---------- 单设备查询（关系解析后按 id 取设备信息） ----------
     @GET("api/device/{deviceId}")
     suspend fun getDevice(@Path("deviceId") deviceId: String): DeviceInfoDto
+
+    // ---------- 认证（第二版：当前用户身份） ----------
+    @GET("api/auth/user")
+    suspend fun getCurrentUser(): CurrentUserDto
+
+    // ---------- 员工（使用者）管理（第二版，租户管理员专属） ----------
+    // 员工列表（Customer）：GET /api/customers
+    @GET("api/customers")
+    suspend fun getCustomers(
+        @Query("pageSize") pageSize: Int = 100,
+        @Query("page") page: Int = 0,
+        @Query("textSearch") textSearch: String? = null
+    ): PageData<CustomerDto>
+
+    // 创建员工（Customer）：POST /api/customer {title}
+    @POST("api/customer")
+    suspend fun createCustomer(@Body body: Any): CustomerDto
+
+    // 创建员工账号（CUSTOMER_USER）：POST /api/user?sendActivationMail=false
+    @POST("api/user")
+    suspend fun createUser(
+        @Query("sendActivationMail") sendActivationMail: Boolean = false,
+        @Body body: Any
+    ): DeviceInfoDto  // 响应含 {id:{id},...}，复用 DeviceInfoDto 的 id 结构
+
+    // 获取激活信息（激活 token 在 value 的 URL 参数里）：GET /api/user/{userId}/activationLinkInfo
+    @GET("api/user/{userId}/activationLinkInfo")
+    suspend fun getActivationLinkInfo(@Path("userId") userId: String): ActivationInfoDto
+
+    // 激活并设初始密码：POST /api/noauth/activate
+    @POST("api/noauth/activate")
+    suspend fun activateUser(@Body body: Any): Response<ResponseBody>
+
+    // 删除员工（Customer）：DELETE /api/customer/{customerId}
+    @DELETE("api/customer/{customerId}")
+    suspend fun deleteCustomer(@Path("customerId") customerId: String): Response<ResponseBody>
+
+    // 分配田块给员工：POST /api/customer/{customerId}/asset/{assetId}
+    @POST("api/customer/{customerId}/asset/{assetId}")
+    suspend fun assignAssetToCustomer(
+        @Path("customerId") customerId: String,
+        @Path("assetId") assetId: String
+    ): Response<ResponseBody>
+
+    // 分配设备给员工：POST /api/customer/{customerId}/device/{deviceId}
+    @POST("api/customer/{customerId}/device/{deviceId}")
+    suspend fun assignDeviceToCustomer(
+        @Path("customerId") customerId: String,
+        @Path("deviceId") deviceId: String
+    ): Response<ResponseBody>
+
+    // 查询员工（Customer）下的账号：GET /api/customer/{customerId}/users
+    @GET("api/customer/{customerId}/users")
+    suspend fun getCustomerUsers(@Path("customerId") customerId: String): PageData<CurrentUserDto>
 }

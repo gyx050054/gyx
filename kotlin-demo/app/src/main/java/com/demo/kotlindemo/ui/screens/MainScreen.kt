@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Power
@@ -61,6 +62,9 @@ import androidx.compose.ui.unit.dp
 import com.demo.kotlindemo.data.model.Device
 import com.demo.kotlindemo.data.model.DeviceType
 import com.demo.kotlindemo.data.model.Field
+// 导入「我的」页与用户 ViewModel（第二版）
+import com.demo.kotlindemo.ui.screens.MineScreen
+import com.demo.kotlindemo.viewmodel.UserViewModel
 // 导入弹窗组件
 import com.demo.kotlindemo.ui.components.BatchControlDialog
 import com.demo.kotlindemo.ui.components.SwitchDialog
@@ -83,7 +87,8 @@ import java.util.Locale
 // 定义两个 tab 类型
 private enum class MainTab {
     FIELDS,  // 区块 tab
-    DEVICES  // 设备 tab
+    DEVICES, // 设备 tab
+    MINE     // 我的 tab（第二版新增：身份/退出/使用者管理）
 }
 
 /**
@@ -102,10 +107,12 @@ private enum class MainTab {
 fun MainScreen(
     farmViewModel: FarmViewModel,   // 农田 ViewModel 参数
     taskViewModel: TaskViewModel,   // 任务 ViewModel 参数
+    userViewModel: UserViewModel,   // 用户 ViewModel（第二版：「我的」页）
     onLogout: () -> Unit,           // 退出登录回调
     onFieldClick: (String) -> Unit, // 点击田块回调，参数是 fieldId
     onTaskManageClick: () -> Unit,   // 点击任务管理回调
-    onDeviceHistoryClick: (String, String) -> Unit  // 点击温湿度计查看历史
+    onDeviceHistoryClick: (String, String) -> Unit,  // 点击温湿度计查看历史
+    onUserManageClick: () -> Unit    // 使用者管理入口（第二版）
 ) {
     // ── 当前选中的 tab ──
     // remember 记住当前选中的 tab，默认是区块
@@ -228,6 +235,13 @@ fun MainScreen(
                     icon = { Icon(Icons.Default.Devices, contentDescription = null) },   // 图标
                     label = { Text("设备") }  // 标签文字
                 )
+                // 我的 tab 按钮（第二版新增）
+                NavigationBarItem(
+                    selected = currentTab == MainTab.MINE,   // 是否选中
+                    onClick = { currentTab = MainTab.MINE },  // 点击切换
+                    icon = { Icon(Icons.Default.Person, contentDescription = null) },  // 图标
+                    label = { Text("我的") }  // 标签文字
+                )
             }
         }
     ) { padding ->  // padding 是 Scaffold 自动计算的内边距
@@ -270,6 +284,12 @@ fun MainScreen(
                     onHistoryClick = { id, name -> onDeviceHistoryClick(id, name) },  // 查看历史
                     onMount = { mountDeviceTarget = it },     // 挂载到田块（自由设备）
                     onDelete = { deleteDeviceTarget = it }    // 删除设备
+                )
+                // 我的 tab（第二版新增）：身份/使用者管理/退出
+                MainTab.MINE -> MineScreen(
+                    userViewModel = userViewModel,
+                    onUserManageClick = onUserManageClick,  // 使用者管理入口
+                    onLogout = onLogout                     // 退出登录
                 )
             }
         }

@@ -41,4 +41,8 @@ interface TaskServiceApi {
     // 标记已完成改密：{email} → {success, message}
     @POST("api/auth/pwd-changed")
     suspend fun pwdChanged(@Body body: Any): ServiceResponse
+
+    // 登记强制改密（员工账号创建后）：{email} → {success, message}
+    @POST("api/auth/mark-must-change")
+    suspend fun markMustChange(@Body body: Any): ServiceResponse
 }

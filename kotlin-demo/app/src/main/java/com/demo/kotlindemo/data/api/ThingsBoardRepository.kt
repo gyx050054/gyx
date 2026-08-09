@@ -4,6 +4,8 @@ package com.demo.kotlindemo.data.api
 import com.demo.kotlindemo.data.dto.DeviceInfoDto
 import com.demo.kotlindemo.data.dto.LoginResponse
 import com.demo.kotlindemo.data.dto.TelemetryItem
+import com.demo.kotlindemo.data.dto.CurrentUserDto
+import com.demo.kotlindemo.data.dto.CustomerDto
 import com.demo.kotlindemo.data.model.Device
 import com.demo.kotlindemo.data.model.DeviceType
 import com.demo.kotlindemo.data.model.Field
@@ -196,6 +198,80 @@ class ThingsBoardRepository {
     suspend fun deleteDevice(deviceId: String): Boolean = withContext(Dispatchers.IO) {
         api.deleteDevice(deviceId).isSuccessful
     }
+
+    // ---------- 员工（使用者）管理（第二版，租户管理员专属） ----------
+
+    /** 员工列表（Customer） */
+    suspend fun loadCustomers(): List<CustomerDto> = withContext(Dispatchers.IO) {
+        api.getCustomers(pageSize = AppConfig.PAGE_SIZE, page = 0).data
+    }
+
+    /** 当前登录用户身份（GET /api/auth/user） */
+    suspend fun loadCurrentUser(): CurrentUserDto = withContext(Dispatchers.IO) {
+        api.getCurrentUser()
+    }
+
+    /**
+     * 创建员工（Customer + CUSTOMER_USER + 激活设初始密码）
+     * 流程（与内部需求文档 3.3 一致）：
+     * ① POST /api/customer {title: 员工名称} → customerId
+     * ② POST /api/user?sendActivationMail=false {email, authority:CUSTOMER_USER, customerId} → userId
+     * ③ activationLinkInfo → 解析 activateToken → noauth/activate 设初始密码
+     *
+     * @param name  员工名称（Customer 标题）
+     * @param email 员工邮箱（登录账号）
+     * @param password 初始密码（默认 123456，首登强制改密）
+     * @return true=创建成功
+     */
+    suspend fun createCustomerUser(name: String, email: String, password: String = "123456"): Boolean =
+        withContext(Dispatchers.IO) {
+            // ① 创建 Customer（title=员工名称）
+            val customer = api.createCustomer(mapOf("title" to name))
+            val customerId = customer.id.id
+            // ② 创建 CUSTOMER_USER（不发送激活邮件）
+            val user = api.createUser(
+                sendActivationMail = false,
+                body = mapOf(
+                    "email" to email,
+                    "authority" to "CUSTOMER_USER",
+                    "customerId" to mapOf("entityType" to "CUSTOMER", "id" to customerId)
+                )
+            )
+            val userId = user.id.id
+            // ③ 激活并设初始密码（TB 4.x：activateToken 在 activationLinkInfo 的 value URL 里）
+            val activateUrl = api.getActivationLinkInfo(userId).value
+            val activateToken = extractQueryParam(activateUrl, "activateToken")
+                ?: return@withContext false
+            api.activateUser(mapOf("activateToken" to activateToken, "password" to password)).isSuccessful
+        }
+
+    /**
+     * 从 URL 提取 query 参数（TB activationLinkInfo 的 value 形如 ...?activateToken=xxx）
+     */
+    private fun extractQueryParam(url: String, name: String): String? {
+        val q = url.indexOf('?')
+        if (q < 0) return null
+        return url.substring(q + 1).split("&")
+            .firstOrNull { it.startsWith("$name=") }
+            ?.substringAfter("=")
+    }
+
+    /** 删除员工（Customer）：DELETE /api/customer/{customerId} */
+    suspend fun deleteCustomer(customerId: String): Boolean = withContext(Dispatchers.IO) {
+        api.deleteCustomer(customerId).isSuccessful
+    }
+
+    /** 分配田块给员工（可见范围）：POST /api/customer/{id}/asset/{assetId} */
+    suspend fun assignAssetToCustomer(customerId: String, assetId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            api.assignAssetToCustomer(customerId, assetId).isSuccessful
+        }
+
+    /** 分配设备给员工（可见范围）：POST /api/customer/{id}/device/{deviceId} */
+    suspend fun assignDeviceToCustomer(customerId: String, deviceId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            api.assignDeviceToCustomer(customerId, deviceId).isSuccessful
+        }
 
     /** 开关阀门（RPC oneway，不等待设备回执） */
     suspend fun toggleValve(deviceId: String, on: Boolean): Boolean = withContext(Dispatchers.IO) {

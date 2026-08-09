@@ -58,4 +58,7 @@ class TaskRepository {
 
     /** 删除设备时取消其全部未完成任务（第二版：APP 删除设备前调用） */
     suspend fun deleteDeviceTasks(deviceId: String): ServiceResponse = taskApi.deleteDeviceTasks(deviceId)
+
+    /** 登记员工账号强制改密（第二版：创建员工后调用，首登走改密流程） */
+    suspend fun markMustChange(email: String): ServiceResponse = taskApi.markMustChange(mapOf("email" to email))
 }
