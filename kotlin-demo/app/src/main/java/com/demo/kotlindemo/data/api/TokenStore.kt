@@ -24,6 +24,9 @@ object TokenStore {
     /** token 存储键名 */
     private const val KEY_TOKEN = "jwt_token"
 
+    /** 任务页访问标记键名（第二版：任务红点） */
+    private const val KEY_TASKS_VISITED = "tasks_visited"
+
     // lateinit：init 前访问会抛异常，保证必须先初始化
     private lateinit var prefs: SharedPreferences
 
@@ -47,5 +50,20 @@ object TokenStore {
     /** 清除 token（退出登录时调用） */
     fun clear() {
         prefs.edit().remove(KEY_TOKEN).apply()
+    }
+
+    // ── 任务红点状态（第二版：访问任务页后消失）──
+
+    /** 标记已访问任务管理页（红点消失） */
+    fun markTasksVisited() {
+        prefs.edit().putBoolean(KEY_TASKS_VISITED, true).apply()
+    }
+
+    /** 是否访问过任务管理页（false=显示红点） */
+    fun hasVisitedTasks(): Boolean = prefs.getBoolean(KEY_TASKS_VISITED, false)
+
+    /** 重置任务访问状态（退出登录时调用，下次登录重新显示红点） */
+    fun resetTasksVisited() {
+        prefs.edit().remove(KEY_TASKS_VISITED).apply()
     }
 }

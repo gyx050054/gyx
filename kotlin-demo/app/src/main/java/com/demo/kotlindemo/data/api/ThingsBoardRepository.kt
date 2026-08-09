@@ -47,6 +47,7 @@ class ThingsBoardRepository {
     fun logout() {
         AuthInterceptor.token = null
         TokenStore.clear()
+        TokenStore.resetTasksVisited()  // 任务红点状态重置（第二版）
     }
 
     /** 获取所有田块（资产列表 + 每个田块的设备数） */

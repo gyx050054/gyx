@@ -71,6 +71,8 @@ import com.demo.kotlindemo.ui.components.SwitchDialog
 import com.demo.kotlindemo.ui.components.TimeRangeDialog
 // 导入 ViewModel
 import com.demo.kotlindemo.viewmodel.FarmViewModel
+// 导入 TokenStore（任务红点状态，第二版）
+import com.demo.kotlindemo.data.api.TokenStore
 import com.demo.kotlindemo.viewmodel.TaskViewModel
 // 导入协程
 import androidx.compose.runtime.LaunchedEffect
@@ -192,21 +194,27 @@ fun MainScreen(
                             Icon(Icons.Default.Add, contentDescription = "新增设备")
                         }
                     }
-                    // 任务管理入口按钮
-                    IconButton(onClick = onTaskManageClick) {
+                    // 任务管理入口按钮（第二版：有任务且未访问时显示红点，访问后消失）
+                    IconButton(onClick = {
+                        TokenStore.markTasksVisited()  // 标记已访问，红点消失
+                        onTaskManageClick()
+                    }) {
                         BadgedBox(
-                            // 如果有任务，显示未读数量标记
+                            // 有任务且用户尚未访问过任务页 → 显示红点（需求文档：访问后消失）
                             badge = {
-                                if (taskViewModel.tasks.isNotEmpty()) {
-                                    Badge { Text("${taskViewModel.tasks.size}") }
+                                if (taskViewModel.tasks.isNotEmpty() && !TokenStore.hasVisitedTasks()) {
+                                    Badge()
                                 }
                             }
                         ) {
                             Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = "任务管理")
                         }
                     }
-                    // 退出登录按钮
-                    IconButton(onClick = onLogout) {
+                    // 退出登录按钮（第二版：退出时重置任务红点状态）
+                    IconButton(onClick = {
+                        TokenStore.resetTasksVisited()  // 重置红点，下次登录重新显示
+                        onLogout()
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "退出")
                     }
                 },
@@ -250,9 +258,11 @@ fun MainScreen(
         LaunchedEffect(Unit) {
             farmViewModel.loadFields()         // 田块总览
             farmViewModel.loadAllDevices()     // 设备列表
+            taskViewModel.loadTasks()          // 任务列表（第二版：任务红点依据）
             while (true) {
                 delay(10_000)                  // 每隔 10 秒
                 farmViewModel.refreshFromApi() // 真实 API 轮询
+                taskViewModel.loadTasks()      // 轮询任务（红点跟随任务变化）
             }
         }
 
@@ -289,7 +299,10 @@ fun MainScreen(
                 MainTab.MINE -> MineScreen(
                     userViewModel = userViewModel,
                     onUserManageClick = onUserManageClick,  // 使用者管理入口
-                    onLogout = onLogout                     // 退出登录
+                    onLogout = {
+                        TokenStore.resetTasksVisited()  // 重置任务红点（第二版）
+                        onLogout()
+                    }  // 退出登录
                 )
             }
         }
