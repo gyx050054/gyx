@@ -1,5 +1,8 @@
 package com.demo.kotlindemo.data.dto
 
+// Gson 字段名映射（TB 响应 customerId/tenantId 为嵌套对象，需 @SerializedName 指定）
+import com.google.gson.annotations.SerializedName
+
 /**
  * ThingsBoard REST API 响应数据模型（Gson 解析用）
  * 字段与 ThingsBoard 4.x 返回的 JSON 对应。
@@ -64,10 +67,24 @@ data class DeviceCredentialsDto(
 )
 
 // 当前用户信息（/api/auth/user 返回项）：用于判断身份（TENANT_ADMIN / CUSTOMER_USER）
+// TB 实体 ID（/api/auth/user 响应里的 customerId/tenantId 是 {entityType,id} 对象）
+data class EntityRefDto(
+    val entityType: String = "",
+    val id: String = ""
+)
+
 data class CurrentUserDto(
     val authority: String = "",
-    val email: String = ""
-)
+    val email: String = "",
+    // TB 响应中 customerId/tenantId 为嵌套对象 {entityType,id}，用 @SerializedName 映射后暴露字符串属性
+    @SerializedName("customerId") private val customerIdObj: EntityRefDto? = null,
+    @SerializedName("tenantId") private val tenantIdObj: EntityRefDto? = null
+) {
+    /** 员工(CUSTOMER_USER)所属客户 ID（查询可见范围用） */
+    val customerId: String get() = customerIdObj?.id ?: ""
+    /** 所属租户 ID */
+    val tenantId: String get() = tenantIdObj?.id ?: ""
+}
 
 // 客户（员工/使用者）信息：{id, name, ...}
 data class CustomerDto(

@@ -176,12 +176,14 @@ fun FieldDetailScreen(
                                 modifier = Modifier.weight(1f)
                             ) { Text("任务管理", style = MaterialTheme.typography.bodyMedium) }
                         }
-                        // 挂载自由设备入口（第二版：方式一，田块详情挂载）
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedButton(
-                            onClick = { showMountDevicesDialog = true },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("挂载自由设备", style = MaterialTheme.typography.bodyMedium) }
+                        // 挂载自由设备入口（第二版：方式一，仅租户管理员可见）
+                        if (farmViewModel.isAdmin) {
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedButton(
+                                onClick = { showMountDevicesDialog = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("挂载自由设备", style = MaterialTheme.typography.bodyMedium) }
+                        }
                     }
                 }
             }

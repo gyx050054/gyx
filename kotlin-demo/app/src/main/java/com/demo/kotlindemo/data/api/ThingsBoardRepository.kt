@@ -6,6 +6,7 @@ import com.demo.kotlindemo.data.dto.LoginResponse
 import com.demo.kotlindemo.data.dto.TelemetryItem
 import com.demo.kotlindemo.data.dto.CurrentUserDto
 import com.demo.kotlindemo.data.dto.CustomerDto
+import com.demo.kotlindemo.data.dto.AssetInfoDto
 import com.demo.kotlindemo.data.model.Device
 import com.demo.kotlindemo.data.model.DeviceType
 import com.demo.kotlindemo.data.model.Field
@@ -50,11 +51,11 @@ class ThingsBoardRepository {
         TokenStore.resetTasksVisited()  // 任务红点状态重置（第二版）
     }
 
-    /** 获取所有田块（资产列表 + 每个田块的设备数） */
+    /** 获取所有田块（资产列表 + 每个田块的设备数）；员工(CUSTOMER_USER)只能看到被分配的 */
     suspend fun loadFields(): List<Field> = withContext(Dispatchers.IO) {
-        val page = api.getAssets(pageSize = AppConfig.PAGE_SIZE, page = 0)
+        val page = fetchAssetsByRole()
         coroutineScope {
-            page.data.map { asset ->
+            page.map { asset ->
                 async {
                     // 每个田块查 Contains 关系，统计设备数
                     val relations = api.getAssetRelations(asset.id.id)
@@ -67,6 +68,28 @@ class ThingsBoardRepository {
                 }
             }.awaitAll()
         }
+    }
+
+    /**
+     * 按角色取田块列表（第二版：老板=全部田块；员工=被分配的田块）
+     */
+    private suspend fun fetchAssetsByRole(): List<AssetInfoDto> {
+        ensureIdentity()
+        return if (cachedAuthority == "TENANT_ADMIN")
+            api.getAssets(pageSize = AppConfig.PAGE_SIZE, page = 0).data
+        else
+            api.getCustomerAssets(cachedCustomerId ?: "", pageSize = AppConfig.PAGE_SIZE, page = 0).data
+    }
+
+    /**
+     * 按角色取设备列表（第二版：老板=全部设备；员工=被分配的设备）
+     */
+    private suspend fun fetchDevicesByRole(type: String): List<DeviceInfoDto> {
+        ensureIdentity()
+        return if (cachedAuthority == "TENANT_ADMIN")
+            api.getDevices(pageSize = AppConfig.PAGE_SIZE, page = 0, type = type).data
+        else
+            api.getCustomerDevices(cachedCustomerId ?: "", pageSize = AppConfig.PAGE_SIZE, page = 0, type = type).data
     }
 
     /** 获取某个田块下的所有设备（关系 → 设备信息 → 最新遥测） */
@@ -85,9 +108,9 @@ class ThingsBoardRepository {
      * 第二版修复：补全 fieldId（设备所属田块），用于区分「自由设备」与「已挂载设备」
      */
     suspend fun loadAllDevices(): List<Device> = withContext(Dispatchers.IO) {
-        val valves = api.getDevices(pageSize = AppConfig.PAGE_SIZE, page = 0, type = "VALVE").data
-        val sensors = api.getDevices(pageSize = AppConfig.PAGE_SIZE, page = 0, type = "TEMPERATURE_HUMIDITY").data
-        // 构建「设备ID → 田块ID」映射（遍历全部田块 Contains 关系）
+        val valves = fetchDevicesByRole("VALVE")
+        val sensors = fetchDevicesByRole("TEMPERATURE_HUMIDITY")
+        // 构建「设备ID → 田块ID」映射（遍历田块 Contains 关系，员工视角只有被分配的田块）
         val fieldIdByDevice = buildFieldIdByDevice()
         coroutineScope {
             (valves + sensors).map { info ->
@@ -101,7 +124,7 @@ class ThingsBoardRepository {
      * 用途：「设备」页区分自由设备（fieldId 为空）与已挂载设备（第二版）
      */
     private suspend fun buildFieldIdByDevice(): Map<String, String> = withContext(Dispatchers.IO) {
-        val fields = api.getAssets(pageSize = AppConfig.PAGE_SIZE, page = 0).data
+        val fields = fetchAssetsByRole()
         val map = mutableMapOf<String, String>()
         for (field in fields) {
             val relations = api.getAssetRelations(field.id.id)
@@ -207,9 +230,31 @@ class ThingsBoardRepository {
         api.getCustomers(pageSize = AppConfig.PAGE_SIZE, page = 0).data
     }
 
-    /** 当前登录用户身份（GET /api/auth/user） */
+    /** 当前登录用户身份（GET /api/auth/user），并缓存角色供后续查询按角色走接口 */
     suspend fun loadCurrentUser(): CurrentUserDto = withContext(Dispatchers.IO) {
-        api.getCurrentUser()
+        val u = api.getCurrentUser()
+        cachedAuthority = u.authority
+        cachedCustomerId = u.customerId
+        u
+    }
+
+    // ── 角色缓存（第二版：查询接口按角色切换，员工只能看被分配的田块/设备）──
+    private var cachedAuthority: String? = null
+    private var cachedCustomerId: String? = null
+
+    /** 确保身份已加载（首次查询时从 TB 拉取一次） */
+    private suspend fun ensureIdentity() {
+        if (cachedAuthority == null) {
+            val u = api.getCurrentUser()
+            cachedAuthority = u.authority
+            cachedCustomerId = u.customerId
+        }
+    }
+
+    /** 是否为租户管理员（员工 CUSTOMER_USER 无管理权限，App 隐藏管理按钮） */
+    suspend fun isAdmin(): Boolean {
+        ensureIdentity()
+        return cachedAuthority == "TENANT_ADMIN"
     }
 
     /**

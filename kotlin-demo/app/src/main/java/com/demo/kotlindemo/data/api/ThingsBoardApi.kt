@@ -20,9 +20,19 @@ interface ThingsBoardApi {
     suspend fun changePassword(@Body body: Any): Response<ResponseBody>
 
     // ---------- 设备 ----------
-    // GET /api/tenant/deviceInfos?pageSize&page&type&textSearch
+    // GET /api/tenant/deviceInfos?pageSize&page&type&textSearch（租户管理员视角）
     @GET("api/tenant/deviceInfos")
     suspend fun getDevices(
+        @Query("pageSize") pageSize: Int = 100,
+        @Query("page") page: Int = 0,
+        @Query("type") type: String? = null,
+        @Query("textSearch") textSearch: String? = null
+    ): PageData<DeviceInfoDto>
+
+    // 员工(CUSTOMER_USER)视角设备：GET /api/customer/{customerId}/deviceInfos（只能看到被分配的）
+    @GET("api/customer/{customerId}/deviceInfos")
+    suspend fun getCustomerDevices(
+        @Path("customerId") customerId: String,
         @Query("pageSize") pageSize: Int = 100,
         @Query("page") page: Int = 0,
         @Query("type") type: String? = null,
@@ -50,12 +60,20 @@ interface ThingsBoardApi {
     suspend fun createRelation(@Body body: Any): Response<ResponseBody>
 
     // ---------- 资产（田块） ----------
-    // GET /api/tenant/assetInfos
+    // GET /api/tenant/assetInfos（租户管理员视角）
     @GET("api/tenant/assetInfos")
     suspend fun getAssets(
         @Query("pageSize") pageSize: Int = 100,
         @Query("page") page: Int = 0,
         @Query("type") type: String? = null
+    ): PageData<AssetInfoDto>
+
+    // 员工(CUSTOMER_USER)视角田块：GET /api/customer/{customerId}/assetInfos（只能看到被分配的）
+    @GET("api/customer/{customerId}/assetInfos")
+    suspend fun getCustomerAssets(
+        @Path("customerId") customerId: String,
+        @Query("pageSize") pageSize: Int = 100,
+        @Query("page") page: Int = 0
     ): PageData<AssetInfoDto>
 
     // 新增田块（第二版）：POST /api/asset {"name","type":"FIELD","assetProfileId":{...}}

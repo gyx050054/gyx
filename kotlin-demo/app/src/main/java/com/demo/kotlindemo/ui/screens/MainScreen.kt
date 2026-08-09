@@ -166,8 +166,8 @@ fun MainScreen(
                 },
                 // 右侧操作按钮
                 actions = {
-                    // 田块 tab 的田块管理按钮（第二版新增）
-                    if (currentTab == MainTab.FIELDS) {                        if (selectionMode) {
+                    // 田块 tab 的田块管理按钮（第二版：仅租户管理员可见）
+                    if (currentTab == MainTab.FIELDS && farmViewModel.isAdmin) {                        if (selectionMode) {
                             // 选择模式：取消 + 删除选中
                             IconButton(onClick = { selectionMode = false; selectedFieldIds = emptySet() }) {
                                 Icon(Icons.Default.Close, contentDescription = "取消选择")
@@ -188,8 +188,8 @@ fun MainScreen(
                             }
                         }
                     }
-                    // 设备 tab：新增设备入口（第二版）
-                    if (currentTab == MainTab.DEVICES) {
+                    // 设备 tab：新增设备入口（第二版，仅租户管理员可见）
+                    if (currentTab == MainTab.DEVICES && farmViewModel.isAdmin) {
                         IconButton(onClick = { showAddDeviceDialog = true }) {
                             Icon(Icons.Default.Add, contentDescription = "新增设备")
                         }
@@ -293,7 +293,8 @@ fun MainScreen(
                     onBatchClick = { showBatchDialog = true },  // 弹出批量操作弹窗
                     onHistoryClick = { id, name -> onDeviceHistoryClick(id, name) },  // 查看历史
                     onMount = { mountDeviceTarget = it },     // 挂载到田块（自由设备）
-                    onDelete = { deleteDeviceTarget = it }    // 删除设备
+                    onDelete = { deleteDeviceTarget = it },    // 删除设备
+                    isAdmin = farmViewModel.isAdmin             // 是否管理员（员工隐藏挂载/删除）
                 )
                 // 我的 tab（第二版新增）：身份/使用者管理/退出
                 MainTab.MINE -> MineScreen(
@@ -670,7 +671,8 @@ private fun DevicesListContent(
     onBatchClick: () -> Unit,          // 批量操作回调
     onHistoryClick: (String, String) -> Unit,  // 查看历史回调
     onMount: (Device) -> Unit,         // 挂载到田块（自由设备，第二版）
-    onDelete: (Device) -> Unit         // 删除设备（第二版）
+    onDelete: (Device) -> Unit,        // 删除设备（第二版）
+    isAdmin: Boolean                   // 是否租户管理员（员工隐藏管理操作）
 ) {
     LazyColumn(
         contentPadding = PaddingValues(12.dp),  // 列表边距
@@ -697,7 +699,8 @@ private fun DevicesListContent(
                 onTiming = { onTimingTask(device) }, // 添加定时任务
                 onHistory = { onHistoryClick(device.id, device.name) }, // 查看历史
                 onMount = { onMount(device) },      // 挂载到田块（自由设备）
-                onDelete = { onDelete(device) }     // 删除设备
+                onDelete = { onDelete(device) },    // 删除设备
+                isAdmin = isAdmin                   // 管理员才显示管理按钮
             )
         }
 
@@ -719,7 +722,8 @@ private fun DeviceCard(
     onTiming: () -> Unit,     // 定时任务回调
     onHistory: () -> Unit,    // 查看历史回调
     onMount: () -> Unit,      // 挂载到田块回调（自由设备）
-    onDelete: () -> Unit      // 删除设备回调
+    onDelete: () -> Unit,     // 删除设备回调
+    isAdmin: Boolean          // 是否租户管理员（员工隐藏挂载/删除管理按钮）
 ) {
     Card(
         modifier = Modifier
@@ -807,29 +811,31 @@ private fun DeviceCard(
                 }
             }
 
-            // ── 第三行：设备管理操作（第二版新增：挂载自由设备 / 删除设备）──
-            Spacer(Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // 自由设备（未归属田块）显示「挂载到田块」
-                if (device.fieldId.isNullOrEmpty()) {
+            // ── 第三行：设备管理操作（第二版：仅管理员显示 挂载自由设备/删除）──
+            if (isAdmin) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // 自由设备（未归属田块）显示「挂载到田块」
+                    if (device.fieldId.isNullOrEmpty()) {
+                        OutlinedButton(
+                            onClick = onMount,
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) { Text("挂载到田块", style = MaterialTheme.typography.bodySmall) }
+                    }
+                    // 删除设备（管理员操作）
                     OutlinedButton(
-                        onClick = onMount,
+                        onClick = onDelete,
                         modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) { Text("挂载到田块", style = MaterialTheme.typography.bodySmall) }
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) { Text("删除", style = MaterialTheme.typography.bodySmall) }
                 }
-                // 删除设备（管理员操作，所有设备可见）
-                OutlinedButton(
-                    onClick = onDelete,
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
-                ) { Text("删除", style = MaterialTheme.typography.bodySmall) }
             }
         }
     }

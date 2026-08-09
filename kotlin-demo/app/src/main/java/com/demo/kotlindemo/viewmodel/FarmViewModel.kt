@@ -37,6 +37,10 @@ class FarmViewModel : ViewModel() {
     private val taskRepository = TaskRepository()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    // 当前登录身份是否为租户管理员（第二版：员工 CUSTOMER_USER 隐藏管理功能）
+    var isAdmin by mutableStateOf(true)
+        private set
+
     // ── 田块列表（API 加载后填充）──
     val fields = mutableStateListOf<Field>()
 
@@ -58,6 +62,8 @@ class FarmViewModel : ViewModel() {
                 val list = repository.loadFields()
                 fields.clear()
                 fields.addAll(list)
+                // 顺带刷新角色（员工隐藏管理按钮用；首次会拉取身份并缓存）
+                isAdmin = repository.isAdmin()
             } catch (e: Exception) {
                 errorMessage = "加载田块失败：${e.message}"
             } finally {
