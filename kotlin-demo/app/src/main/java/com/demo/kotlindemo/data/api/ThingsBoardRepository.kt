@@ -7,6 +7,7 @@ import com.demo.kotlindemo.data.dto.TelemetryItem
 import com.demo.kotlindemo.data.dto.CurrentUserDto
 import com.demo.kotlindemo.data.dto.CustomerDto
 import com.demo.kotlindemo.data.dto.AssetInfoDto
+import com.demo.kotlindemo.data.dto.MemberDto
 import com.demo.kotlindemo.data.model.Device
 import com.demo.kotlindemo.data.model.DeviceType
 import com.demo.kotlindemo.data.model.Field
@@ -240,12 +241,14 @@ class ThingsBoardRepository {
         val u = api.getCurrentUser()
         cachedAuthority = u.authority
         cachedCustomerId = u.customerId
+        cachedTenantId = u.tenantId
         u
     }
 
-    // ── 角色缓存（第二版：查询接口按角色切换，员工只能看被分配的田块/设备）──
+    // ── 角色/租户缓存（第二版：查询接口按角色切换；第三版：创建成员需本公司 tenantId）──
     private var cachedAuthority: String? = null
     private var cachedCustomerId: String? = null
+    private var cachedTenantId: String? = null
 
     /** 确保身份已加载（首次查询时从 TB 拉取一次） */
     private suspend fun ensureIdentity() {
@@ -253,7 +256,14 @@ class ThingsBoardRepository {
             val u = api.getCurrentUser()
             cachedAuthority = u.authority
             cachedCustomerId = u.customerId
+            cachedTenantId = u.tenantId
         }
+    }
+
+    /** 当前登录者所属租户（公司）id（创建成员时使用，防止跨公司越权） */
+    suspend fun myTenantId(): String? {
+        ensureIdentity()
+        return cachedTenantId
     }
 
     /** 是否为租户管理员（员工 CUSTOMER_USER 无管理权限，App 隐藏管理按钮） */
@@ -263,30 +273,46 @@ class ThingsBoardRepository {
     }
 
     /**
-     * 创建员工（Customer + CUSTOMER_USER + 激活设初始密码）
-     * 流程（与内部需求文档 3.3 一致）：
-     * ① POST /api/customer {title: 员工名称} → customerId
-     * ② POST /api/user?sendActivationMail=false {email, authority:CUSTOMER_USER, customerId} → userId
-     * ③ activationLinkInfo → 解析 activateToken → noauth/activate 设初始密码
+     * 创建成员（第三版：成员管理统一入口，取代旧 createCustomerUser）
+     * 流程（与《成员管理设计方案》4.1 一致）：
+     *  - 管理员：POST /api/user {email, authority:TENANT_ADMIN, tenantId:本公司} → 激活
+     *  - 使用者+新建家庭：POST /api/customer {title} → customerId → POST /api/user {..., customerId} → 激活
+     *  - 使用者+加入已有家庭：POST /api/user {..., customerId:已有} → 激活
      *
-     * @param name  员工名称（Customer 标题）
-     * @param email 员工邮箱（登录账号）
-     * @param password 初始密码（默认 123456，首登强制改密）
-     * @return true=创建成功
+     * @param role       角色："ADMIN"=租户管理员（加入本公司）/ "USER"=客户用户（家庭成员）
+     * @param familyId   已有家庭（客户）id；null 表示新建家庭
+     * @param familyName 新建家庭名称（familyId 为 null 且 role=USER 时必填）
+     * @param email      账号邮箱（登录账号）
+     * @param password   初始密码（默认 123456，首登强制改密）
+     * @return true=创建成功（含激活设密成功）
      */
-    suspend fun createCustomerUser(name: String, email: String, password: String = "123456"): Boolean =
+    suspend fun createMember(role: String, familyId: String?, familyName: String,
+                             email: String, password: String = "123456"): Boolean =
         withContext(Dispatchers.IO) {
-            // ① 创建 Customer（title=员工名称）
-            val customer = api.createCustomer(mapOf("title" to name))
-            val customerId = customer.id.id
-            // ② 创建 CUSTOMER_USER（不发送激活邮件）
+            // 本公司 tenantId（防止跨公司创建账号越权）
+            val tenantId = myTenantId() ?: return@withContext false
+            // ① 使用者且未指定家庭 → 新建家庭（客户）
+            var customerId = familyId
+            if (role != "ADMIN" && customerId == null) {
+                val customer = api.createCustomer(mapOf("title" to familyName))
+                customerId = customer.id.id
+            }
+            // ② 创建账号（不发送激活邮件）
             val user = api.createUser(
                 sendActivationMail = false,
-                body = mapOf(
-                    "email" to email,
-                    "authority" to "CUSTOMER_USER",
-                    "customerId" to mapOf("entityType" to "CUSTOMER", "id" to customerId)
-                )
+                body = if (role == "ADMIN")
+                    mapOf(
+                        "email" to email,
+                        "authority" to "TENANT_ADMIN",
+                        "tenantId" to mapOf("entityType" to "TENANT", "id" to tenantId)
+                    )
+                else
+                    mapOf(
+                        "email" to email,
+                        "authority" to "CUSTOMER_USER",
+                        "tenantId" to mapOf("entityType" to "TENANT", "id" to tenantId),
+                        "customerId" to mapOf("entityType" to "CUSTOMER", "id" to customerId!!)
+                    )
             )
             val userId = user.id.id
             // ③ 激活并设初始密码（TB 4.x：activateToken 在 activationLinkInfo 的 value URL 里）
@@ -295,6 +321,33 @@ class ThingsBoardRepository {
                 ?: return@withContext false
             api.activateUser(mapOf("activateToken" to activateToken, "password" to password)).isSuccessful
         }
+
+    /**
+     * 加载成员列表（第三版）：本公司所有家庭（客户）+ 每个家庭下的账号
+     * 说明：管理员（TENANT_ADMIN）不属于任何家庭，故本列表仅含家庭成员（CUSTOMER_USER）；
+     *       管理员数量在 UI 层通过 currentUser 身份/成员页单独呈现。
+     * @return 成员列表（含所属家庭名与账号 id）
+     */
+    suspend fun loadMembers(): List<MemberDto> = withContext(Dispatchers.IO) {
+        val customers = api.getCustomers(pageSize = AppConfig.PAGE_SIZE, page = 0).data
+        customers.flatMap { c ->
+            val cid = c.id.id
+            api.getCustomerUsers(cid).data.map { u ->
+                MemberDto(
+                    customerId = cid,
+                    customerTitle = c.title.ifBlank { c.name },
+                    userId = u.id.id,
+                    email = u.email,
+                    authority = u.authority
+                )
+            }
+        }
+    }
+
+    /** 删除成员账号（第三版：只删账号，不动家庭/设备）：DELETE /api/user/{userId} */
+    suspend fun deleteMember(userId: String): Boolean = withContext(Dispatchers.IO) {
+        api.deleteUser(userId).isSuccessful
+    }
 
     /**
      * 从 URL 提取 query 参数（TB activationLinkInfo 的 value 形如 ...?activateToken=xxx）

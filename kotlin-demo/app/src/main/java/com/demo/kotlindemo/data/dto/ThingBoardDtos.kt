@@ -74,6 +74,8 @@ data class EntityRefDto(
 )
 
 data class CurrentUserDto(
+    // 账号 id（成员列表删除用；/api/customer/{cid}/users 响应含 id 对象）
+    val id: EntityId = EntityId(),
     val authority: String = "",
     val email: String = "",
     // TB 响应中 customerId/tenantId 为嵌套对象 {entityType,id}，用 @SerializedName 映射后暴露字符串属性
@@ -91,6 +93,15 @@ data class CustomerDto(
     val id: EntityId = EntityId(),
     val name: String = "",
     val title: String = ""
+)
+
+// 成员信息（第三版：成员管理列表项）——一个家庭（客户）下的一个账号
+data class MemberDto(
+    val customerId: String = "",      // 所属家庭（客户）id
+    val customerTitle: String = "",   // 所属家庭名称
+    val userId: String = "",          // 账号 id（删除成员用）
+    val email: String = "",           // 账号邮箱
+    val authority: String = ""        // TENANT_ADMIN（管理员）/ CUSTOMER_USER（家庭成员）
 )
 
 // 用户激活信息（activationLinkInfo 返回项）：activateToken 在 value 的 URL 参数里

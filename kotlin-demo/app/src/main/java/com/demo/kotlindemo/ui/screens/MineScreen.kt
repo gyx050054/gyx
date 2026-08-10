@@ -28,11 +28,11 @@ import com.demo.kotlindemo.viewmodel.UserViewModel
  *
  * 内容（对应内部需求文档 doc 需求 1）：
  *  - 当前身份展示（租户管理员 / 员工，读取 TB /api/auth/user 的 authority）
- *  - 「使用者管理」入口（仅租户管理员可见）
+ *  - 「成员管理」入口（仅租户管理员可见）
  *  - 「退出登录」按钮
  *
  * @param userViewModel 用户 ViewModel
- * @param onUserManageClick 使用者管理入口回调（仅管理员）
+ * @param onUserManageClick 成员管理入口回调（仅管理员）
  * @param onLogout 退出登录回调
  */
 @Composable
@@ -104,13 +104,13 @@ fun MineScreen(
 
         Spacer(Modifier.height(24.dp))
 
-        // 使用者管理入口（仅租户管理员可见，对应需求文档：只有管理员可以新增使用者）
+        // 成员管理入口（仅租户管理员可见：新增管理员/家庭成员、分配可见范围）
         if (isAdmin) {
             OutlinedButton(
                 onClick = onUserManageClick,
                 modifier = Modifier.fillMaxWidth().height(50.dp)
             ) {
-                Text("使用者管理（员工账号）")
+                Text("成员管理（管理员/家庭成员）")
             }
             Spacer(Modifier.height(12.dp))
         }

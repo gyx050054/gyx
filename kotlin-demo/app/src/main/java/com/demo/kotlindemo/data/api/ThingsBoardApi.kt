@@ -171,6 +171,10 @@ interface ThingsBoardApi {
     @DELETE("api/customer/{customerId}")
     suspend fun deleteCustomer(@Path("customerId") customerId: String): Response<ResponseBody>
 
+    // 删除成员账号（第三版：只删账号，不动家庭/设备）：DELETE /api/user/{userId}
+    @DELETE("api/user/{userId}")
+    suspend fun deleteUser(@Path("userId") userId: String): Response<ResponseBody>
+
     // 分配田块给员工：POST /api/customer/{customerId}/asset/{assetId}
     @POST("api/customer/{customerId}/asset/{assetId}")
     suspend fun assignAssetToCustomer(
@@ -186,6 +190,11 @@ interface ThingsBoardApi {
     ): Response<ResponseBody>
 
     // 查询员工（Customer）下的账号：GET /api/customer/{customerId}/users
+    // 注意：TB 4.x 此接口 pageSize 为必填参数，缺失会返回 500
     @GET("api/customer/{customerId}/users")
-    suspend fun getCustomerUsers(@Path("customerId") customerId: String): PageData<CurrentUserDto>
+    suspend fun getCustomerUsers(
+        @Path("customerId") customerId: String,
+        @Query("pageSize") pageSize: Int = 100,
+        @Query("page") page: Int = 0
+    ): PageData<CurrentUserDto>
 }

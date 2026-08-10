@@ -13,6 +13,7 @@ import com.demo.kotlindemo.data.api.ThingsBoardRepository
 import com.demo.kotlindemo.data.api.TaskRepository
 import com.demo.kotlindemo.data.dto.CurrentUserDto
 import com.demo.kotlindemo.data.dto.CustomerDto
+import com.demo.kotlindemo.data.dto.MemberDto
 // 协程
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,15 +21,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * 用户（员工/使用者）管理 ViewModel（第二版新增）
+ * 成员管理 ViewModel（第三版：替代原"员工管理"）
  *
  * 职责：
  *  - 当前登录身份（TENANT_ADMIN / CUSTOMER_USER）——「我的」页展示用；
- *  - 员工（Customer）列表、创建员工（Customer+CUSTOMER_USER+激活）、删除员工；
- *  - 分配田块/设备可见范围给员工。
- *
- * 设计说明：只调 ThingsBoardRepository（TB 域）与 TaskRepository（微服务端域），
- *           UI 层不感知两套后端差异。
+ *  - 成员列表（家庭成员 CUSTOMER_USER）+ 家庭（客户）列表；
+ *  - 创建成员（管理员=加入本公司 / 使用者=新建或加入已有家庭）；
+ *  - 删除成员（只删账号）/ 删除家庭（级联删成员账号，设备任务保留）；
+ *  - 分配田块/设备可见范围给家庭（成员共享）。
  */
 class UserViewModel : ViewModel() {
 
@@ -40,8 +40,11 @@ class UserViewModel : ViewModel() {
     var currentUser by mutableStateOf<CurrentUserDto?>(null)
         private set
 
-    // ── 员工列表 ──
-    val customers = mutableStateListOf<CustomerDto>()
+    // ── 成员列表（家庭成员，含所属家庭名与账号 id）──
+    val members = mutableStateListOf<MemberDto>()
+
+    // ── 家庭（客户）列表（新增成员"加入已有家庭"下拉 + 删除家庭入口用）──
+    val families = mutableStateListOf<CustomerDto>()
 
     var isLoading by mutableStateOf(false)
         private set
@@ -59,17 +62,26 @@ class UserViewModel : ViewModel() {
         }
     }
 
-    /** 加载员工列表 */
-    fun loadCustomers() {
+    /** 加载成员列表 + 家庭列表（新增成员下拉用） */
+    fun loadMembers() {
         scope.launch {
             isLoading = true
             errorMessage = null
             try {
-                val list = repository.loadCustomers()
-                customers.clear()
-                customers.addAll(list)
+                val list = repository.loadMembers()
+                members.clear()
+                members.addAll(list)
+                val fams = repository.loadCustomers()
+                families.clear()
+                families.addAll(fams)
             } catch (e: Exception) {
-                errorMessage = "加载员工列表失败：${e.message}"
+                // 记录具体失败请求 URL + 服务端响应体（定位 500 来源用）
+                val he = e as? retrofit2.HttpException
+                val url = he?.response()?.raw()?.request?.url?.toString()
+                val body = he?.response()?.errorBody()?.string()
+                errorMessage = "加载成员列表失败：${e.message}" +
+                        (url?.let { " @ $it" } ?: "") +
+                        (body?.take(200)?.let { " | $it" } ?: "")
             } finally {
                 isLoading = false
             }
@@ -77,40 +89,59 @@ class UserViewModel : ViewModel() {
     }
 
     /**
-     * 创建员工（Customer + CUSTOMER_USER + 激活设初始密码）
-     * 创建成功后登记微服务端强制改密标记（员工首登强制改密），并刷新列表
+     * 创建成员（第三版：角色 + 归属）
+     * @param role       "ADMIN"=管理员（加入本公司）/ "USER"=使用者（家庭成员）
+     * @param familyId   已有家庭 id；null=新建家庭
+     * @param familyName 新建家庭名称（familyId 为 null 且 role=USER 时必填）
+     * @param email      账号邮箱
      */
-    fun createUser(name: String, email: String, onResult: (Boolean, String) -> Unit) {
+    fun createMember(role: String, familyId: String?, familyName: String, email: String,
+                     onResult: (Boolean, String) -> Unit) {
         scope.launch {
             try {
-                val ok = repository.createCustomerUser(name.trim(), email.trim())
+                val ok = repository.createMember(role, familyId, familyName.trim(), email.trim())
                 if (ok) {
                     // 登记强制改密（失败不影响创建，仅日志）
                     runCatching { taskRepository.markMustChange(email.trim()) }
-                    loadCustomers()
-                    onResult(true, "员工「$name」创建成功")
+                    loadMembers()
+                    onResult(true, if (role == "ADMIN") "管理员创建成功" else "成员创建成功")
                 } else {
-                    onResult(false, "创建员工失败（邮箱可能已被占用）")
+                    onResult(false, "创建失败（邮箱可能已被占用）")
                 }
             } catch (e: Exception) {
-                onResult(false, "创建员工失败：${e.message}")
+                onResult(false, "创建失败：${e.message}")
             }
         }
     }
 
-    /** 删除员工（Customer），成功后刷新列表 */
-    fun deleteUser(customerId: String, onResult: (Boolean, String) -> Unit) {
+    /** 删除成员（只删账号，家庭/设备/其他成员不受影响） */
+    fun deleteMember(userId: String, onResult: (Boolean, String) -> Unit) {
         scope.launch {
             try {
-                val ok = repository.deleteCustomer(customerId)
-                if (ok) {
-                    customers.removeAll { it.id.id == customerId }
-                    onResult(true, "员工已删除")
+                if (repository.deleteMember(userId)) {
+                    loadMembers()
+                    onResult(true, "成员已删除")
                 } else {
-                    onResult(false, "删除员工失败")
+                    onResult(false, "删除成员失败")
                 }
             } catch (e: Exception) {
-                onResult(false, "删除员工失败：${e.message}")
+                onResult(false, "删除成员失败：${e.message}")
+            }
+        }
+    }
+
+    /** 删除家庭（删客户，其下成员账号级联删除；田块/设备/任务保留） */
+    fun deleteFamily(customerId: String, onResult: (Boolean, String) -> Unit) {
+        scope.launch {
+            try {
+                if (repository.deleteCustomer(customerId)) {
+                    loadMembers()
+                    onResult(true, "家庭已删除")
+                } else {
+                    onResult(false, "删除家庭失败")
+                }
+            } catch (e: Exception) {
+                onResult(false, "删除家庭失败：${e.message}")
             }
         }
     }
