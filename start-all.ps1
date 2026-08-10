@@ -8,7 +8,7 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $MySqlExe      = 'C:\Program Files\MySQL\MySQL Server 8.3\bin\mysql.exe'
 $DockerDesktop = 'C:\Users\15079\AppData\Local\Programs\DockerDesktop\Docker Desktop.exe'
 $TBDir         = 'C:\Users\15079\ThingsBoard'
-$TaskDir       = 'C:\Users\15079\Desktop\java\webtest\task-service'
+$TaskDir       = 'C:\Users\15079\Desktop\物联网灌溉系统\task-service'  # 第二版微服务端（注册/改密/任务）
 $Mvn           = "$env:USERPROFILE\.m2\wrapper\dists\apache-maven-3.9.16-bin\5grr65jo27hi51sujmtcldfovl\apache-maven-3.9.16\bin\mvn.cmd"
 $SimDir        = 'C:\Users\15079\Desktop\q\物联网灌溉系统第一代第三版\simulators'
 $AppDir        = 'C:\Users\15079\Desktop\q\kotlin-demo'

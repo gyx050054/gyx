@@ -30,7 +30,7 @@ import time
 import requests
 
 TB = "http://localhost:8080"
-SVC = "http://localhost:9091"
+SVC = "http://localhost:9300"   # 微服务端端口（第二版起为 9300）
 USERNAME = "15079983758@163.com"
 PASSWORD = "147258"
 
