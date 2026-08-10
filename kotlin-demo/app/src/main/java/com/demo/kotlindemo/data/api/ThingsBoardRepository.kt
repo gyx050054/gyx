@@ -234,6 +234,8 @@ class ThingsBoardRepository {
     /** 员工列表（Customer） */
     suspend fun loadCustomers(): List<CustomerDto> = withContext(Dispatchers.IO) {
         api.getCustomers(pageSize = AppConfig.PAGE_SIZE, page = 0).data
+            // 过滤 TB 系统默认客户「Public」（无业务意义，不应在成员管理中展示）
+            .filter { it.title != "Public" && it.name != "Public" }
     }
 
     /** 当前登录用户身份（GET /api/auth/user），并缓存角色供后续查询按角色走接口 */
