@@ -197,4 +197,11 @@ interface ThingsBoardApi {
         @Query("pageSize") pageSize: Int = 100,
         @Query("page") page: Int = 0
     ): PageData<CurrentUserDto>
+
+    // 查询本公司全部用户（第三版增强：成员管理页展示本公司管理员列表）
+    @GET("api/users")
+    suspend fun getUsers(
+        @Query("pageSize") pageSize: Int = 100,
+        @Query("page") page: Int = 0
+    ): PageData<CurrentUserDto>
 }

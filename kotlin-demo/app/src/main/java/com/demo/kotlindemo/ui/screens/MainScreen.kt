@@ -124,9 +124,9 @@ fun MainScreen(
     // 开关弹窗：null=不显示，非null=要显示的设备
     var showSwitchDialog by remember { mutableStateOf<Device?>(null) }
     // 批量操作弹窗：true=显示
-    var showBatchDialog  by remember { mutableStateOf(false) }
+    var showBatchDialog by remember { mutableStateOf(false) }
     // 定时任务弹窗：null=不显示，非null=要设置的设备
-    var showTimeDialog   by remember { mutableStateOf<Device?>(null) }
+    var showTimeDialog by remember { mutableStateOf<Device?>(null) }
 
     // ── 田块管理状态（第二版新增：新增/删除田块）──
     // 新增田块弹窗：true=显示
@@ -167,13 +167,18 @@ fun MainScreen(
                 // 右侧操作按钮
                 actions = {
                     // 田块 tab 的田块管理按钮（第二版：仅租户管理员可见）
-                    if (currentTab == MainTab.FIELDS && farmViewModel.isAdmin) {                        if (selectionMode) {
+                    if (currentTab == MainTab.FIELDS && farmViewModel.isAdmin) {
+                        if (selectionMode) {
                             // 选择模式：取消 + 删除选中
-                            IconButton(onClick = { selectionMode = false; selectedFieldIds = emptySet() }) {
+                            IconButton(onClick = {
+                                selectionMode = false; selectedFieldIds = emptySet()
+                            }) {
                                 Icon(Icons.Default.Close, contentDescription = "取消选择")
                             }
                             IconButton(
-                                onClick = { if (selectedFieldIds.isNotEmpty()) showDeleteConfirm = true },
+                                onClick = {
+                                    if (selectedFieldIds.isNotEmpty()) showDeleteConfirm = true
+                                },
                                 enabled = selectedFieldIds.isNotEmpty()
                             ) {
                                 Icon(Icons.Default.Delete, contentDescription = "删除选中田块")
@@ -183,7 +188,9 @@ fun MainScreen(
                             IconButton(onClick = { showAddFieldDialog = true }) {
                                 Icon(Icons.Default.Add, contentDescription = "新增田块")
                             }
-                            IconButton(onClick = { selectionMode = true; selectedFieldIds = emptySet() }) {
+                            IconButton(onClick = {
+                                selectionMode = true; selectedFieldIds = emptySet()
+                            }) {
                                 Icon(Icons.Default.Delete, contentDescription = "删除田块")
                             }
                         }
@@ -207,12 +214,17 @@ fun MainScreen(
                                 }
                             }
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = "任务管理")
+                            Icon(
+                                Icons.AutoMirrored.Filled.Assignment,
+                                contentDescription = "任务管理"
+                            )
                         }
                     }
-                    // 退出登录按钮（第二版：退出时清 token + 重置任务红点状态）
+                    // 退出登录按钮（第三版：清 token + 清空三个 ViewModel，防切换账号串号/残留）
                     IconButton(onClick = {
-                        farmViewModel.logout()       // 清 JWT + 本地缓存（防串号）
+                        farmViewModel.logout()       // 清 JWT + 田块/设备缓存
+                        taskViewModel.clear()        // 清任务列表 + 租户缓存
+                        userViewModel.clear()        // 清成员/家庭/身份
                         TokenStore.resetTasksVisited()  // 重置红点，下次登录重新显示
                         onLogout()
                     }) {
@@ -302,8 +314,10 @@ fun MainScreen(
                     userViewModel = userViewModel,
                     onUserManageClick = onUserManageClick,  // 使用者管理入口
                     onLogout = {
-                        farmViewModel.logout()       // 清 JWT + 本地缓存（防串号）
-                        TokenStore.resetTasksVisited()  // 重置任务红点（第二版）
+                        farmViewModel.logout()       // 清 JWT + 田块/设备缓存
+                        taskViewModel.clear()        // 清任务列表 + 租户缓存
+                        userViewModel.clear()        // 清成员/家庭/身份
+                        TokenStore.resetTasksVisited()  // 重置任务红点（第三版）
                         onLogout()
                     }  // 退出登录
                 )
@@ -385,7 +399,7 @@ fun MainScreen(
             text = {
                 Text(
                     "将删除选中的 ${selectedFieldIds.size} 块田块，其下设备将变为自由设备" +
-                        "（设备不会丢失，可重新挂载到其它田块）。是否继续？"
+                            "（设备不会丢失，可重新挂载到其它田块）。是否继续？"
                 )
             },
             confirmButton = {
@@ -595,7 +609,11 @@ private fun FieldCard(
             // 选择模式：选中卡片加主色边框高亮
             .then(
                 if (selected)
-                    Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+                    Modifier.border(
+                        3.dp,
+                        MaterialTheme.colorScheme.primary,
+                        RoundedCornerShape(12.dp)
+                    )
                 else Modifier
             ),
         // 卡片颜色：有设备在运行则用primaryContainer，否则用surfaceVariant
@@ -731,7 +749,7 @@ private fun DeviceCard(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (device.type == DeviceType.SENSOR) Modifier.clickable { onHistory() } else Modifier),  // 传感器点击看历史
-        
+
         // 卡片颜色：开启时用secondaryContainer，关闭时用surface
         colors = CardDefaults.cardColors(
             containerColor = if (device.isOn)
@@ -878,7 +896,10 @@ private fun AddDeviceDialog(
                 Spacer(Modifier.height(8.dp))
                 // 类型单选：仅支持电动阀 / 温度湿度计（需求文档：类型限定）
                 Row {
-                    listOf("VALVE" to "电动阀", "TEMPERATURE_HUMIDITY" to "温度湿度计").forEach { (v, label) ->
+                    listOf(
+                        "VALVE" to "电动阀",
+                        "TEMPERATURE_HUMIDITY" to "温度湿度计"
+                    ).forEach { (v, label) ->
                         FilterChip(
                             selected = type == v,
                             onClick = { type = v },
@@ -919,7 +940,7 @@ private fun TokenDialog(token: String, onDismiss: () -> Unit) {
             Column {
                 Text(
                     "请复制下面的接入凭证（Access Token），配置到你的设备后，" +
-                        "设备数据会自动出现在系统里：",
+                            "设备数据会自动出现在系统里：",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(12.dp))
@@ -990,7 +1011,7 @@ private fun MountFieldDialog(
  */
 private fun deviceIcon(type: DeviceType) = when (type) {
     // VALVE（电动阀）→ WaterDrop（水滴图标）
-    DeviceType.VALVE  -> Icons.Default.WaterDrop
+    DeviceType.VALVE -> Icons.Default.WaterDrop
     // SENSOR（传感器）→ Sensors（信号图标）
     DeviceType.SENSOR -> Icons.Default.Sensors
 }
@@ -1005,8 +1026,8 @@ private fun deviceSubtitle(device: Device): String = when (device.type) {
     // 其他设备显示在线/运行状态 + 电量
     else -> when {
         !device.isOnline -> "❌ 离线"               // 离线
-        device.isOn      -> "🟢 工作中  🔋${device.battery}%"  // 工作状态+电量
-        else             -> "⚪ 未工作  🔋${device.battery}%"     // 待机+电量
+        device.isOn -> "🟢 工作中  🔋${device.battery}%"  // 工作状态+电量
+        else -> "⚪ 未工作  🔋${device.battery}%"     // 待机+电量
     }
 }
 

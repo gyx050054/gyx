@@ -43,6 +43,9 @@ class UserViewModel : ViewModel() {
     // ── 成员列表（家庭成员，含所属家庭名与账号 id）──
     val members = mutableStateListOf<MemberDto>()
 
+    // ── 本公司管理员列表（第三版增强：成员管理页顶部展示，含当前登录者）──
+    val admins = mutableStateListOf<String>()
+
     // ── 家庭（客户）列表（新增成员"加入已有家庭"下拉 + 删除家庭入口用）──
     val families = mutableStateListOf<CustomerDto>()
 
@@ -74,6 +77,10 @@ class UserViewModel : ViewModel() {
                 val fams = repository.loadCustomers()
                 families.clear()
                 families.addAll(fams)
+                // 本公司管理员列表（第三版增强：成员管理页顶部展示）
+                val adminList = repository.loadTenantAdmins()
+                admins.clear()
+                admins.addAll(adminList)
             } catch (e: Exception) {
                 // 记录具体失败请求 URL + 服务端响应体（定位 500 来源用）
                 val he = e as? retrofit2.HttpException
@@ -172,6 +179,18 @@ class UserViewModel : ViewModel() {
 
     /** 清除错误提示 */
     fun clearError() {
+        errorMessage = null
+    }
+
+    /**
+     * 退出登录时清空（第三版：修复切换账号残留）
+     * 清空成员/家庭/身份，避免下一个账号看到上个账号的数据
+     */
+    fun clear() {
+        members.clear()
+        families.clear()
+        admins.clear()
+        currentUser = null
         errorMessage = null
     }
 }

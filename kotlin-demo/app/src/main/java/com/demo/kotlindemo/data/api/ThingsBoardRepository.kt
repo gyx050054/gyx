@@ -324,8 +324,7 @@ class ThingsBoardRepository {
             api.activateUser(mapOf("activateToken" to activateToken, "password" to password)).isSuccessful
         }
 
-    /**
-     * 加载成员列表（第三版）：本公司所有家庭（客户）+ 每个家庭下的账号
+    /** 加载成员列表（第三版）：本公司所有家庭（客户）+ 每个家庭下的账号
      * 说明：管理员（TENANT_ADMIN）不属于任何家庭，故本列表仅含家庭成员（CUSTOMER_USER）；
      *       管理员数量在 UI 层通过 currentUser 身份/成员页单独呈现。
      * @return 成员列表（含所属家庭名与账号 id）
@@ -344,6 +343,17 @@ class ThingsBoardRepository {
                 )
             }
         }
+    }
+
+    /**
+     * 加载本公司所有管理员（第三版增强：成员管理页顶部展示）
+     * 调 GET /api/users（租户管理员可列出本公司全部用户），过滤 TENANT_ADMIN
+     * @return 管理员邮箱列表（含当前登录者自己）
+     */
+    suspend fun loadTenantAdmins(): List<String> = withContext(Dispatchers.IO) {
+        api.getUsers(pageSize = AppConfig.PAGE_SIZE, page = 0).data
+            .filter { it.authority == "TENANT_ADMIN" }
+            .map { it.email }
     }
 
     /** 删除成员账号（第三版：只删账号，不动家庭/设备）：DELETE /api/user/{userId} */

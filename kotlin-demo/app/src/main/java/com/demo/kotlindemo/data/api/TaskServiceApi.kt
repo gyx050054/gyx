@@ -16,9 +16,9 @@ interface TaskServiceApi {
     @POST("api/tasks")
     suspend fun createTask(@Body body: Any): TaskCreateResponse
 
-    // 查询全部任务
+    // 查询任务（第三版修复：按租户过滤，公司间任务互不可见；tenantId 为空时微服务端返回全部，App 恒传当前租户）
     @GET("api/tasks")
-    suspend fun getTasks(): List<ServiceTask>
+    suspend fun getTasks(@Query("tenantId") tenantId: String? = null): List<ServiceTask>
 
     // 删除任务
     @DELETE("api/tasks/{id}")

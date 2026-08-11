@@ -15,6 +15,8 @@ import com.demo.kotlindemo.data.model.TaskStatus
 import com.demo.kotlindemo.data.model.TimingTask
 // 导入网络仓库
 import com.demo.kotlindemo.data.api.TaskRepository
+// 第三版：任务按租户隔离，需要当前登录者所属公司（租户）id
+import com.demo.kotlindemo.data.api.ThingsBoardRepository
 // 导入任务 DTO→模型 转换
 import com.demo.kotlindemo.data.model.toTimingTask
 // 导入协程
@@ -33,6 +35,8 @@ import kotlinx.coroutines.launch
 class TaskViewModel : ViewModel() {
 
     private val repository = TaskRepository()
+    // 第三版：从 TB 获取当前登录者的租户（公司）id，任务创建/查询均带租户，实现公司间隔离
+    private val thingsBoardRepository = ThingsBoardRepository()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // ── 任务列表（微服务端数据）──
@@ -42,11 +46,22 @@ class TaskViewModel : ViewModel() {
     var lastMessage by mutableStateOf<String?>(null)
         private set
 
-    /** 加载全部任务（微服务端 GET /api/tasks） */
+    /** 当前租户（公司）id；登录后首次调用时从 TB 拉取并缓存 */
+    private var tenantId: String? = null
+
+    /** 确保租户 id 已加载（登录态下调用 /api/auth/user 获取） */
+    private suspend fun ensureTenantId() {
+        if (tenantId == null) {
+            tenantId = thingsBoardRepository.myTenantId()
+        }
+    }
+
+    /** 加载当前公司（租户）的任务（GET /api/tasks?tenantId=当前租户） */
     fun loadTasks() {
         scope.launch {
             try {
-                val list = repository.loadTasks()
+                ensureTenantId()
+                val list = repository.loadTasks(tenantId)
                 tasks.clear()
                 tasks.addAll(list.map { it.toTimingTask() })
             } catch (e: Exception) {
@@ -60,7 +75,8 @@ class TaskViewModel : ViewModel() {
         var ok = false
         scope.launch {
             try {
-                val resp = repository.createTask(deviceId, deviceName, startTime, endTime)
+                ensureTenantId()
+                val resp = repository.createTask(deviceId, deviceName, startTime, endTime, tenantId = tenantId)
                 ok = resp.success
                 lastMessage = resp.message
                 if (ok) loadTasks()
@@ -76,7 +92,8 @@ class TaskViewModel : ViewModel() {
         var ok = false
         scope.launch {
             try {
-                val resp = repository.createTasksBatch(deviceIds, startTime, endTime)
+                ensureTenantId()
+                val resp = repository.createTasksBatch(deviceIds, startTime, endTime, tenantId)
                 ok = resp.success
                 lastMessage = resp.message
                 if (ok) loadTasks()
@@ -109,5 +126,15 @@ class TaskViewModel : ViewModel() {
     /** 清除提示 */
     fun clearMessage() {
         lastMessage = null
+    }
+
+    /**
+     * 退出登录时清空（第三版：修复切换账号残留）
+     * 清空任务列表与租户缓存，避免下一个账号看到上个账号的任务
+     */
+    fun clear() {
+        tasks.clear()
+        lastMessage = null
+        tenantId = null
     }
 }

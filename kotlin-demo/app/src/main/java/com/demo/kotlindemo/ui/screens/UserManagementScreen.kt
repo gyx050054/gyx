@@ -106,6 +106,37 @@ fun UserManagementScreen(
                     )
                 }
             }
+            // 本公司卡片（第三版增强：展示本公司所有管理员，含当前登录者）
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+                        Text(
+                            text = "🏢 本公司（${userViewModel.admins.size} 名管理员）",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        if (userViewModel.admins.isEmpty()) {
+                            Text(
+                                "（暂无管理员）",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        userViewModel.admins.forEach { email ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (email == userViewModel.currentUser?.email) "👑 $email（我）" else "👑 $email",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             // 家庭（客户）列表：一个家庭一张卡片，卡片内含成员
             if (userViewModel.families.isEmpty()) {
                 item {

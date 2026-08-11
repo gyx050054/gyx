@@ -19,13 +19,14 @@ class TaskRepository {
 
     private val taskApi = ApiClient.taskService
 
-    /** 创建定时任务（单个设备；action 默认 on=开启） */
+    /** 创建定时任务（单个设备；action 默认 on=开启；第三版：带当前租户 tenantId 实现跨公司隔离） */
     suspend fun createTask(
         deviceId: String,
         deviceName: String,
         startTime: Long,
         endTime: Long,
-        action: String = "on"
+        action: String = "on",
+        tenantId: String? = null
     ): TaskCreateResponse {
         return taskApi.createTask(
             mapOf(
@@ -33,25 +34,27 @@ class TaskRepository {
                 "deviceName" to deviceName,
                 "startTime" to startTime,
                 "endTime" to endTime,
-                "action" to action
+                "action" to action,
+                "tenantId" to tenantId
             )
         )
     }
 
-    /** 批量创建定时任务（多选设备；统一起止时间，全部 action=on） */
+    /** 批量创建定时任务（多选设备；统一起止时间，全部 action=on；第三版：带当前租户） */
     suspend fun createTasksBatch(
         devices: List<Pair<String, String>>,
         startTime: Long,
-        endTime: Long
+        endTime: Long,
+        tenantId: String? = null
     ): TaskCreateResponse {
         val list = devices.map { (id, name) ->
-            mapOf("deviceId" to id, "deviceName" to name, "startTime" to startTime, "endTime" to endTime, "action" to "on")
+            mapOf("deviceId" to id, "deviceName" to name, "startTime" to startTime, "endTime" to endTime, "action" to "on", "tenantId" to tenantId)
         }
         return taskApi.createTask(mapOf("devices" to list))
     }
 
-    /** 查询全部任务（含已完成/已取消，供任务管理页展示） */
-    suspend fun loadTasks(): List<ServiceTask> = taskApi.getTasks()
+    /** 查询任务（第三版：按当前租户过滤，各公司只见自己的任务） */
+    suspend fun loadTasks(tenantId: String? = null): List<ServiceTask> = taskApi.getTasks(tenantId)
 
     /** 删除（取消）任务：未开始直接取消；已开始由微服务端先发暂停 */
     suspend fun deleteTask(taskId: Long): TaskCreateResponse = taskApi.deleteTask(taskId)
