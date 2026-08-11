@@ -50,43 +50,44 @@ fun FaqScreen(onBack: () -> Unit) {
 
         Spacer(Modifier.height(16.dp))
 
-        // 问题列表（静态文案，对应需求文档 3.2）
+        // 问题列表（通俗化文案，第三版：让不熟悉的人也能看懂）
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxWidth().padding(20.dp)) {
                 Text(
-                    text = "如何注册使用？",
+                    text = "怎么注册？注册了我是干嘛的？",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "如果用户没使用过，可以注册农田，并默认成为农田管理员（老板），" +
-                        "不能直接成为农田使用者（员工）。注册成功后自动登录，" +
-                        "默认密码首次登录需修改。",
+                    text = "直接点登录页的「注册」，用邮箱注册一个账号就行。\n\n" +
+                        "注册成功后，你就是一个独立的「农户/公司老板」，可以自己建田块、加设备、" +
+                        "给家人或员工开账号。注意：注册只能当老板，不能直接当员工。",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(20.dp))
                 Text(
-                    text = "为什么需要联系系统？",
+                    text = "为什么我不能自己随便创建账号？",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "客户端无法直接新增 ThingsBoard 租户管理员，须经系统（微服务端）" +
-                        "代为创建；租户管理员可直接在 App 内新增租户使用者（员工）。",
+                    text = "为了保证安全，新「公司」的老板账号由系统自动创建（你注册就是）；" +
+                        "其他的账号——不管是公司的另一个老板，还是家里的成员——" +
+                        "都由现有老板在 App 的「成员管理」里添加，外人进不来。",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(20.dp))
                 Text(
-                    text = "首次登录为什么要改密码？",
+                    text = "为什么第一次登录要改密码？",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "为保证账号安全，注册后使用统一默认密码，首次登录必须修改为" +
-                        "自己的密码后才能进入系统。",
+                    text = "新账号默认用统一的初始密码（123456），这个密码大家都知道，不安全。" +
+                        "所以第一次登录必须改成只有你自己知道的密码，才能进入系统。",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }

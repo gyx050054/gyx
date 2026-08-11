@@ -356,14 +356,13 @@ class ThingsBoardRepository {
     }
 
     /**
-     * 加载本公司所有管理员（第三版增强：成员管理页顶部展示）
+     * 加载本公司所有管理员（第三版增强：成员管理页顶部展示 + 可删除）
      * 调 GET /api/users（租户管理员可列出本公司全部用户），过滤 TENANT_ADMIN
-     * @return 管理员邮箱列表（含当前登录者自己）
+     * @return 管理员列表（含账号 id，删除用；含当前登录者自己）
      */
-    suspend fun loadTenantAdmins(): List<String> = withContext(Dispatchers.IO) {
+    suspend fun loadTenantAdmins(): List<CurrentUserDto> = withContext(Dispatchers.IO) {
         api.getUsers(pageSize = AppConfig.PAGE_SIZE, page = 0).data
             .filter { it.authority == "TENANT_ADMIN" }
-            .map { it.email }
     }
 
     /** 删除成员账号（第三版：只删账号，不动家庭/设备）：DELETE /api/user/{userId} */

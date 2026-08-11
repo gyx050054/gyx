@@ -102,6 +102,9 @@ fun AppNavGraph(navController: NavHostController) {
             LoginScreen(
                 // 登录成功（无需改密）后的回调：进入主页，清空返回栈
                 onLoginSuccess = {
+                    // 第三版：切换账号残留防御——进主界面立即刷新身份与田块，确保显示当前登录者数据
+                    userViewModel.loadCurrentUser()
+                    farmViewModel.loadFields()
                     navController.navigate(Routes.MAIN) {
                         popUpTo(Routes.LOGIN) { inclusive = true }
                     }
@@ -135,6 +138,9 @@ fun AppNavGraph(navController: NavHostController) {
             ChangePasswordScreen(
                 email = email,
                 onSuccess = {
+                    // 第三版：改密完成进主界面，立即刷新身份与田块（防止残留上个账号数据）
+                    userViewModel.loadCurrentUser()
+                    farmViewModel.loadFields()
                     navController.navigate(Routes.MAIN) {
                         popUpTo(Routes.LOGIN) { inclusive = true }
                     }

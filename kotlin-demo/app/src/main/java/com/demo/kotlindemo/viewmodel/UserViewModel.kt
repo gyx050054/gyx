@@ -43,8 +43,8 @@ class UserViewModel : ViewModel() {
     // ── 成员列表（家庭成员，含所属家庭名与账号 id）──
     val members = mutableStateListOf<MemberDto>()
 
-    // ── 本公司管理员列表（第三版增强：成员管理页顶部展示，含当前登录者）──
-    val admins = mutableStateListOf<String>()
+    // ── 本公司管理员列表（第三版增强：成员管理页顶部展示，含当前登录者；可删除）──
+    val admins = mutableStateListOf<CurrentUserDto>()
 
     // ── 家庭（客户）列表（新增成员"加入已有家庭"下拉 + 删除家庭入口用）──
     val families = mutableStateListOf<CustomerDto>()
@@ -117,6 +117,22 @@ class UserViewModel : ViewModel() {
                 }
             } catch (e: Exception) {
                 onResult(false, "创建失败：${e.message}")
+            }
+        }
+    }
+
+    /** 删除管理员账号（第三版：不能删除自己，UI 层已控制） */
+    fun deleteAdmin(userId: String, email: String, onResult: (Boolean, String) -> Unit) {
+        scope.launch {
+            try {
+                if (repository.deleteMember(userId)) {
+                    loadMembers()
+                    onResult(true, "管理员 $email 已删除")
+                } else {
+                    onResult(false, "删除管理员失败")
+                }
+            } catch (e: Exception) {
+                onResult(false, "删除管理员失败：${e.message}")
             }
         }
     }

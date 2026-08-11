@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Delete
 // DTO
 import com.demo.kotlindemo.data.dto.CustomerDto
 import com.demo.kotlindemo.data.dto.MemberDto
+import com.demo.kotlindemo.data.dto.CurrentUserDto
 // ViewModel
 import com.demo.kotlindemo.viewmodel.FarmViewModel
 import com.demo.kotlindemo.viewmodel.UserViewModel
@@ -70,6 +71,7 @@ fun UserManagementScreen(
     var assignTarget by remember { mutableStateOf<CustomerDto?>(null) }   // 分配弹窗目标（家庭）
     var deleteMemberTarget by remember { mutableStateOf<MemberDto?>(null) } // 删除成员确认
     var deleteFamilyTarget by remember { mutableStateOf<CustomerDto?>(null) } // 删除家庭确认
+    var deleteAdminTarget by remember { mutableStateOf<CurrentUserDto?>(null) } // 删除管理员确认（第三版）
     var opMessage by remember { mutableStateOf<String?>(null) }      // 操作结果提示
 
     Scaffold(
@@ -123,15 +125,27 @@ fun UserManagementScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        userViewModel.admins.forEach { email ->
+                        userViewModel.admins.forEach { admin ->
+                            val isMe = admin.id.id == userViewModel.currentUser?.id?.id
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = if (email == userViewModel.currentUser?.email) "👑 $email（我）" else "👑 $email",
-                                    style = MaterialTheme.typography.bodyMedium
+                                    text = if (isMe) "👑 ${admin.email}（我）" else "👑 ${admin.email}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.weight(1f)
                                 )
+                                // 不能删除自己；其他管理员可删除（第三版）
+                                if (!isMe) {
+                                    IconButton(onClick = { deleteAdminTarget = admin }) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "删除管理员 ${admin.email}",
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -187,6 +201,24 @@ fun UserManagementScreen(
                 }
                 assignTarget = null
             }
+        )
+    }
+
+    // ── 删除管理员确认弹窗（第三版：不能删除自己）──
+    deleteAdminTarget?.let { admin ->
+        AlertDialog(
+            onDismissRequest = { deleteAdminTarget = null },
+            title = { Text("确认删除管理员？") },
+            text = { Text("将删除管理员账号「${admin.email}」，删除后该账号将无法登录。是否继续？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val uid = admin.id.id
+                    val em = admin.email
+                    deleteAdminTarget = null
+                    userViewModel.deleteAdmin(uid, em) { ok, msg -> opMessage = msg }
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { deleteAdminTarget = null }) { Text("取消") } }
         )
     }
 
