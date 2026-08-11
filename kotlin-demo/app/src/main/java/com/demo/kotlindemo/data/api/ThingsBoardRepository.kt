@@ -228,6 +228,35 @@ class ThingsBoardRepository {
     }
 
     /**
+     * 取下设备（第三版）：删除设备与田块的 Contains 关系，设备变为自由设备
+     * 调用 TB DELETE /api/v2/relation（query 参数形式，实测 /api/relation 无 DELETE）
+     * @param deviceId 设备 id
+     * @param fieldId  当前所属田块 id
+     */
+    suspend fun unmountDevice(deviceId: String, fieldId: String): Boolean = withContext(Dispatchers.IO) {
+        api.deleteRelation(
+            fromType = "ASSET",
+            fromId = fieldId,
+            relationType = "Contains",
+            toType = "DEVICE",
+            toId = deviceId
+        ).isSuccessful
+    }
+
+    /**
+     * 改挂设备到别的田块（第三版）：先删旧关系，再建新关系
+     * @param deviceId    设备 id
+     * @param oldFieldId  原田块 id
+     * @param newFieldId  新田块 id
+     */
+    suspend fun remountDevice(deviceId: String, oldFieldId: String, newFieldId: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val ok = unmountDevice(deviceId, oldFieldId)
+            if (!ok) return@withContext false
+            mountDevice(deviceId, newFieldId)
+        }
+
+    /**
      * 删除设备（第二版，租户管理员专属）：DELETE /api/device/{deviceId}
      * TB 删除设备会自动清理其挂载关系（设备消失、田块设备数减少）
      * 注意：取消该设备未完成任务由 ViewModel 编排（先调微服务端 DELETE /api/tasks/device/{id}）

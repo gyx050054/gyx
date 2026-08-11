@@ -237,6 +237,43 @@ class FarmViewModel : ViewModel() {
     }
 
     /**
+     * 取下设备（第三版）：设备从田块取下，变为自由设备
+     */
+    fun unmountDevice(deviceId: String, fieldId: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        scope.launch {
+            try {
+                val ok = repository.unmountDevice(deviceId, fieldId)
+                if (ok) {
+                    loadAllDevices()  // 刷新：该设备变为自由设备
+                    loadFields()      // 田块设备数变化
+                }
+                onResult(ok, if (ok) "已取下，设备变为自由设备" else "取下失败")
+            } catch (e: Exception) {
+                onResult(false, "取下失败：${e.message}")
+            }
+        }
+    }
+
+    /**
+     * 改挂设备到别的田块（第三版）：先取下再挂到新田块
+     */
+    fun remountDevice(deviceId: String, oldFieldId: String, newFieldId: String,
+                      onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        scope.launch {
+            try {
+                val ok = repository.remountDevice(deviceId, oldFieldId, newFieldId)
+                if (ok) {
+                    loadAllDevices()
+                    loadFields()
+                }
+                onResult(ok, if (ok) "改挂成功" else "改挂失败")
+            } catch (e: Exception) {
+                onResult(false, "改挂失败：${e.message}")
+            }
+        }
+    }
+
+    /**
      * 删除设备（租户管理员）：先取消该设备未完成任务（微服务端），再删除 TB 设备
      * @param deviceId 设备 ID
      */

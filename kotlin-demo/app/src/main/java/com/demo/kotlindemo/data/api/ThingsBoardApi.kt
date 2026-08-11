@@ -59,6 +59,16 @@ interface ThingsBoardApi {
     @POST("api/relation")
     suspend fun createRelation(@Body body: Any): Response<ResponseBody>
 
+    // 删除单条关系（第三版：取下/改挂设备）：DELETE /api/v2/relation?fromType&fromId&relationType&toType&toId
+    @DELETE("api/v2/relation")
+    suspend fun deleteRelation(
+        @Query("fromType") fromType: String,
+        @Query("fromId") fromId: String,
+        @Query("relationType") relationType: String,
+        @Query("toType") toType: String,
+        @Query("toId") toId: String
+    ): Response<ResponseBody>
+
     // ---------- 资产（田块） ----------
     // GET /api/tenant/assetInfos（租户管理员视角）
     @GET("api/tenant/assetInfos")

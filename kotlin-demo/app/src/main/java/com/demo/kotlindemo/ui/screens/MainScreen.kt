@@ -132,6 +132,10 @@ fun MainScreen(
     var newDeviceToken by remember { mutableStateOf<String?>(null) }
     // 挂载弹窗目标设备：非 null=显示（对自由设备选田块挂载）
     var mountDeviceTarget by remember { mutableStateOf<Device?>(null) }
+    // 取下目标（已挂载设备，第三版）
+    var unmountTarget by remember { mutableStateOf<Device?>(null) }
+    // 改挂目标（已挂载设备，第三版）
+    var remountTarget by remember { mutableStateOf<Device?>(null) }
     // 删除确认弹窗目标设备：非 null=显示
     var deleteDeviceTarget by remember { mutableStateOf<Device?>(null) }
     // 设备操作结果提示
@@ -291,6 +295,8 @@ fun MainScreen(
                     onBatchClick = { showBatchDialog = true },  // 弹出批量操作弹窗
                     onHistoryClick = { id, name -> onDeviceHistoryClick(id, name) },  // 查看历史
                     onMount = { mountDeviceTarget = it },     // 挂载到田块（自由设备）
+                    onUnmount = { unmountTarget = it },       // 取下设备（已挂载→自由，第三版）
+                    onRemount = { remountTarget = it },       // 改挂到别的田块（第三版）
                     onDelete = { deleteDeviceTarget = it },    // 删除设备
                     isAdmin = farmViewModel.isAdmin             // 是否管理员（员工隐藏挂载/删除）
                 )
@@ -456,6 +462,40 @@ fun MainScreen(
             onConfirm = { fieldId ->                              // 确认挂载
                 farmViewModel.mountDevice(device.id, fieldId) { ok, msg -> devOpMessage = msg }
                 mountDeviceTarget = null
+            }
+        )
+    }
+
+    // ── 取下设备确认弹窗（第三版：已挂载→自由设备）──
+    unmountTarget?.let { device ->
+        AlertDialog(
+            onDismissRequest = { unmountTarget = null },
+            title = { Text("确认取下设备？") },
+            text = { Text("将设备「${device.name}」从田块取下，变为自由设备（可重新挂载）。是否继续？") },
+            confirmButton = {
+                TextButton(onClick = {
+                    val fid = device.fieldId
+                    unmountTarget = null
+                    if (!fid.isNullOrEmpty()) {
+                        farmViewModel.unmountDevice(device.id, fid) { ok, msg -> devOpMessage = msg }
+                    }
+                }) { Text("取下", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { unmountTarget = null }) { Text("取消") } }
+        )
+    }
+
+    // ── 改挂到别的田块弹窗（第三版：先取下再挂新田块）──
+    remountTarget?.let { device ->
+        MountFieldDialog(
+            fields = farmViewModel.fields.filter { it.id != device.fieldId },  // 排除当前田块
+            onDismiss = { remountTarget = null },
+            onConfirm = { fieldId ->
+                val oldFid = device.fieldId
+                if (!oldFid.isNullOrEmpty()) {
+                    farmViewModel.remountDevice(device.id, oldFid, fieldId) { ok, msg -> devOpMessage = msg }
+                }
+                remountTarget = null
             }
         )
     }

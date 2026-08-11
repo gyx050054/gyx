@@ -67,6 +67,8 @@ internal fun DevicesListContent(
     onBatchClick: () -> Unit,          // 批量操作回调
     onHistoryClick: (String, String) -> Unit,  // 查看历史回调
     onMount: (Device) -> Unit,         // 挂载到田块（自由设备，第二版）
+    onUnmount: (Device) -> Unit,       // 取下设备（已挂载→自由，第三版）
+    onRemount: (Device) -> Unit,       // 改挂到别的田块（第三版）
     onDelete: (Device) -> Unit,        // 删除设备（第二版）
     isAdmin: Boolean                   // 是否租户管理员（员工隐藏管理操作）
 ) {
@@ -95,6 +97,8 @@ internal fun DevicesListContent(
                 onTiming = { onTimingTask(device) }, // 添加定时任务
                 onHistory = { onHistoryClick(device.id, device.name) }, // 查看历史
                 onMount = { onMount(device) },      // 挂载到田块（自由设备）
+                onUnmount = { onUnmount(device) },   // 取下设备（已挂载→自由）
+                onRemount = { onRemount(device) },   // 改挂到别的田块
                 onDelete = { onDelete(device) },    // 删除设备
                 isAdmin = isAdmin                   // 管理员才显示管理按钮
             )
@@ -118,6 +122,8 @@ internal fun DeviceCard(
     onTiming: () -> Unit,     // 定时任务回调
     onHistory: () -> Unit,    // 查看历史回调
     onMount: () -> Unit,      // 挂载到田块回调（自由设备）
+    onUnmount: () -> Unit,    // 取下设备回调（已挂载→自由）
+    onRemount: () -> Unit,    // 改挂到别的田块回调
     onDelete: () -> Unit,     // 删除设备回调
     isAdmin: Boolean          // 是否租户管理员（员工隐藏挂载/删除管理按钮）
 ) {
@@ -221,6 +227,18 @@ internal fun DeviceCard(
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                         ) { Text("挂载到田块", style = MaterialTheme.typography.bodySmall) }
+                    } else {
+                        // 已挂载设备（第三版）：可取下变自由 / 改挂到别的田块
+                        OutlinedButton(
+                            onClick = onUnmount,
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) { Text("取下", style = MaterialTheme.typography.bodySmall) }
+                        OutlinedButton(
+                            onClick = onRemount,
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        ) { Text("改挂", style = MaterialTheme.typography.bodySmall) }
                     }
                     // 删除设备（管理员操作）
                     OutlinedButton(
