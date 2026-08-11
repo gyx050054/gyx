@@ -10,6 +10,8 @@ import androidx.compose.foundation.lazy.items
 // 导入返回箭头图标（自动镜像RTL）
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+// 全选图标（第三版：任务批量停止用）
+import androidx.compose.material.icons.automirrored.filled.Assignment
 // 导入删除图标
 import androidx.compose.material.icons.filled.Delete
 // 导入收件箱图标（空态用）
@@ -72,7 +74,27 @@ fun TaskManagementScreen(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+                ),
+                // 标题栏右侧：全选 + 一键停止（第三版：冲突清理/批量停止）
+                actions = {
+                    // 全选未完成任务
+                    IconButton(onClick = { taskViewModel.selectAllActive() }) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Assignment,
+                            contentDescription = "全选未完成任务",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                    // 一键停止所选（有勾选时显示数量）
+                    if (taskViewModel.selectedTaskIds.isNotEmpty()) {
+                        TextButton(onClick = { taskViewModel.deleteSelected() }) {
+                            Text(
+                                "停止所选(${taskViewModel.selectedTaskIds.size})",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                }
             )
         }
     ) { padding ->
@@ -82,9 +104,11 @@ fun TaskManagementScreen(
         }
 
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // 任务总数统计
+            // 任务总数统计（勾选时显示已选数量，第三版）
+            val selCount = taskViewModel.selectedTaskIds.size
             Text(
-                "📋 共 ${taskViewModel.tasks.size} 条任务",
+                if (selCount > 0) "📋 共 ${taskViewModel.tasks.size} 条任务 · 已选 $selCount 条（点卡片左侧勾选）"
+                else "📋 共 ${taskViewModel.tasks.size} 条任务",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -101,10 +125,12 @@ fun TaskManagementScreen(
                     contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 80.dp),  // 列表整体边距
                     verticalArrangement = Arrangement.spacedBy(10.dp)  // 项间距
                 ) {
-                    // 遍历所有任务
+                    // 遍历所有任务（顺序已按状态排序：执行中→未开始→已完成/取消）
                     items(taskViewModel.tasks, key = { it.id }) { task ->
                         TaskCard(
                             task = task,                                   // 任务数据
+                            selected = task.id in taskViewModel.selectedTaskIds,  // 是否已勾选
+                            onToggleSelect = { taskViewModel.toggleSelect(task.id) },  // 切换勾选
                             onDelete = { taskViewModel.deleteTask(task.id) }  // 删除
                         )
                     }
@@ -125,6 +151,8 @@ fun TaskManagementScreen(
 @Composable
 private fun TaskCard(
     task: TimingTask,       // 任务数据
+    selected: Boolean,      // 是否已勾选（第三版：批量停止用）
+    onToggleSelect: () -> Unit,  // 切换勾选
     onDelete: () -> Unit    // 删除回调
 ) {
     Card(
@@ -149,6 +177,14 @@ private fun TaskCard(
                 .padding(14.dp),  // 内边距
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // 勾选框：仅未完成（PENDING/RUNNING）可勾选，用于一键停止（第三版）
+            if (task.status == TaskStatus.PENDING || task.status == TaskStatus.RUNNING) {
+                Checkbox(
+                    checked = selected,
+                    onCheckedChange = { onToggleSelect() }
+                )
+                Spacer(Modifier.width(4.dp))
+            }
             // 状态点：仅待执行/执行中显示（已完成/已取消不冒红点）
             if (task.status == TaskStatus.PENDING || task.status == TaskStatus.RUNNING) {
                 StatusDot(task.status)

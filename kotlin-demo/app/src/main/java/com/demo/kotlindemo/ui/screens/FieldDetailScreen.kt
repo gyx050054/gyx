@@ -250,7 +250,11 @@ fun FieldDetailScreen(
                     deviceName = device.name,             // 设备名称
                     startTime = start,                    // 开始时间
                     endTime = end                         // 结束时间
-                )
+                ) { ok, msg ->                            // 第三版：失败且因冲突 → 记录冲突设备，UI 弹清理确认
+                    if (!ok && msg.contains("冲突")) {
+                        taskViewModel.setConflict(device.name, device.id)
+                    }
+                }
                 showTimeDialog = null                      // 关闭弹窗
             }
         )
@@ -275,7 +279,11 @@ fun FieldDetailScreen(
                     deviceIds = list.map { it.id to it.name },
                     startTime = start,
                     endTime = end
-                )
+                ) { ok, msg ->                             // 第三版：批量冲突 → 记录冲突（无法定位单设备）
+                    if (!ok && msg.contains("冲突")) {
+                        taskViewModel.setConflict("所选设备", "")
+                    }
+                }
                 showBatchDialog = false
             }
         )
@@ -297,6 +305,28 @@ fun FieldDetailScreen(
                 }
                 showMountDevicesDialog = false
             }
+        )
+    }
+
+    // ── 冲突清理确认弹窗（第三版：创建任务冲突时，提示清除该设备的任务）──
+    taskViewModel.conflictDeviceName?.let { devName ->
+        AlertDialog(
+            onDismissRequest = { taskViewModel.clearConflict() },
+            title = { Text("存在冲突的任务") },
+            text = {
+                Text("设备「$devName」此时段已有任务进行中，是否清除该设备的任务？清除后可重新添加。")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val devId = taskViewModel.conflictDeviceId
+                    taskViewModel.clearConflict()
+                    // 跳任务管理页并预勾选该设备未完成任务（批量冲突时全选待清理项）
+                    if (devId.isNullOrEmpty()) taskViewModel.selectAllActive()
+                    else taskViewModel.preSelectDeviceTasks(devId)
+                    onTaskManageClick()
+                }) { Text("去清理", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { taskViewModel.clearConflict() }) { Text("取消") } }
         )
     }
 }
