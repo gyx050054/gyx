@@ -138,8 +138,14 @@ class TaskViewModel : ViewModel() {
         scope.launch {
             try {
                 val resp = repository.deleteTask(svcId)
-                lastMessage = resp.message
-                loadTasks()
+                if (resp.success) {
+                    // 删除成功：从列表立即移除 + 提示，避免"已取消沉底"的列表跳动
+                    tasks.removeAll { it.id == taskId }
+                    lastMessage = "删除成功"
+                } else {
+                    lastMessage = resp.message
+                    loadTasks()
+                }
             } catch (e: Exception) {
                 lastMessage = "删除任务失败：${e.message}"
             }
@@ -196,18 +202,23 @@ class TaskViewModel : ViewModel() {
         if (ids.isEmpty()) return
         scope.launch {
             var okCount = 0
+            val toRemove = mutableListOf<String>()
             for (taskId in ids) {
                 val svcId = taskId.removePrefix("svc_").toLongOrNull()
                 if (svcId == null) continue
                 try {
-                    if (repository.deleteTask(svcId).success) okCount++
+                    if (repository.deleteTask(svcId).success) {
+                        okCount++
+                        toRemove.add(taskId)
+                    }
                 } catch (e: Exception) {
                     // 单条失败不中断，继续下一条
                 }
             }
+            // 停止成功的任务立即从列表移除，避免"已取消沉底"的跳动
+            tasks.removeAll { it.id in toRemove }
             selectedTaskIds.clear()
             lastMessage = "已停止 $okCount 条任务"
-            loadTasks()
         }
     }
 
