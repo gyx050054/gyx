@@ -136,5 +136,7 @@ class TaskViewModel : ViewModel() {
         tasks.clear()
         lastMessage = null
         tenantId = null
+        // 关键：清掉本实例缓存的租户 id，否则切换账号后用上个公司的租户查任务
+        thingsBoardRepository.clearCachedIdentity()
     }
 }

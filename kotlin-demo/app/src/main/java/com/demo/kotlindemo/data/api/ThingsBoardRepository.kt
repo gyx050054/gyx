@@ -53,8 +53,18 @@ class ThingsBoardRepository {
         AuthInterceptor.token = null
         TokenStore.clear()
         TokenStore.resetTasksVisited()  // 任务红点状态重置（第二版）
-        cachedAuthority = null          // 角色缓存一并清掉（避免切换账号串号）
+        clearCachedIdentity()
+    }
+
+    /**
+     * 仅清空身份/租户缓存（不动 token）
+     * 第三版：切换账号时各 ViewModel 持有的独立 Repository 实例都要调用，
+     * 否则会用上个账号缓存的 tenantId 查数据（跨公司残留的元凶）
+     */
+    fun clearCachedIdentity() {
+        cachedAuthority = null
         cachedCustomerId = null
+        cachedTenantId = null
     }
 
     /** 获取所有田块（资产列表 + 每个田块的设备数）；员工(CUSTOMER_USER)只能看到被分配的 */

@@ -192,5 +192,7 @@ class UserViewModel : ViewModel() {
         admins.clear()
         currentUser = null
         errorMessage = null
+        // 清掉本实例缓存的租户/角色，避免切换账号后用上个公司的租户建账号
+        repository.clearCachedIdentity()
     }
 }
