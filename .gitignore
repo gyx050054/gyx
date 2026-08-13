@@ -45,3 +45,6 @@ Desktop.ini
 # ===== 含凭据的配置文件（不提交） =====
 task-service/src/main/resources/application.yml
 **/simulators/device_inventory.json
+
+# ===== 产物 APK（体积大，按需分发，不入库） =====
+*.apk

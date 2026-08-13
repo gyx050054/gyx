@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.irrigation.task.service.AuthService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -39,17 +40,21 @@ public class AuthController {
     /** 租户注册：body {"email": "..."} */
     @PostMapping("/register")
     public ResponseEntity<JsonNode> register(@RequestBody JsonNode body) {
-        String email = body.path("email").asText("");
+        String email = body.path("email").asText("").trim();
         try {
             authService.register(email);
+            log.info("注册成功 email={}", email);
             return ResponseEntity.ok(ok(true, "注册成功，请登录"));
-        } catch (IllegalArgumentException e) {
-            // 参数非法：400 + 明确提示
-            return ResponseEntity.badRequest().body(ok(false, e.getMessage()));
-        } catch (Exception e) {
-            // 其它异常（TB 不可达/创建失败）：200 + 失败信息，便于 App 统一提示
-            log.error("注册失败 email={}: {}", email, e.getMessage());
-            return ResponseEntity.ok(ok(false, "注册失败：" + e.getMessage()));
+        } catch (IllegalArgumentException e) {          // 邮箱格式错
+            log.warn("注册参数非法 email={}: {}", email, e.getMessage());
+            return ResponseEntity.badRequest().body(ok(false, "邮箱格式不正确"));
+        } catch (IllegalStateException e) {             // 邮箱重复（TB 已存在）
+            log.warn("注册冲突 email={}: {}", email, e.getMessage());
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(ok(false, "该邮箱已注册"));
+        } catch (Exception e) {                         // TB 不可达/其它
+            log.error("注册失败 email={}", email, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ok(false, "注册失败，请稍后重试"));
         }
     }
 
