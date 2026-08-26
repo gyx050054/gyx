@@ -19,5 +19,7 @@ data class Field(
     val cropType: String = "",  // 作物类型，默认空
     val deviceCount: Int = 0,   // 关联设备数，默认 0
     val activeCount: Int = 0,   // 激活设备数，默认 0
-    val areaSqm: Double = 0.0   // 面积，平方米，默认 0
+    val areaSqm: Double = 0.0,  // 面积，平方米，默认 0
+    val lat: Double = 0.0,      // 田块中心纬度（地图用，第三代 §6）
+    val lon: Double = 0.0       // 田块中心经度（地图用）
 )

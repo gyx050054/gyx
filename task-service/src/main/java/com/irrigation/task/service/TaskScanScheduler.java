@@ -32,10 +32,13 @@ public class TaskScanScheduler {
 
     private final TaskRepository taskRepository;
     private final TaskExecutor taskExecutor;
+    private final DailyTaskService dailyTaskService;
 
-    public TaskScanScheduler(TaskRepository taskRepository, TaskExecutor taskExecutor) {
+    public TaskScanScheduler(TaskRepository taskRepository, TaskExecutor taskExecutor,
+                             DailyTaskService dailyTaskService) {
         this.taskRepository = taskRepository;
         this.taskExecutor = taskExecutor;
+        this.dailyTaskService = dailyTaskService;
     }
 
     /**
@@ -69,6 +72,13 @@ public class TaskScanScheduler {
             t.setStatus(Task.Status.COMPLETED);
             taskRepository.save(t);        // 保留记录（已完成状态供任务管理展示，不物理删除）
             log.info("任务 {} 到期，关闭设备 {}，状态置 COMPLETED", t.getId(), t.getDeviceId());
+        }
+
+        // ③ 每天任务调度（第三代第一版 §2）：到点开浇/到时关浇/天气跳过/按日去重
+        try {
+            dailyTaskService.processDaily();
+        } catch (Exception e) {
+            log.warn("每天任务调度失败：{}", e.getMessage());
         }
     }
 }

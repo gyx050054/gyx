@@ -38,7 +38,7 @@ class FarmViewModel : ViewModel() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // 当前登录身份是否为租户管理员（第二版：员工 CUSTOMER_USER 隐藏管理功能）
-    var isAdmin by mutableStateOf(true)
+    var isAdmin by mutableStateOf(false)  // 安全默认：身份确认前不显示管理按钮
         private set
 
     // ── 田块列表（API 加载后填充）──
@@ -67,6 +67,8 @@ class FarmViewModel : ViewModel() {
             } catch (e: Exception) {
                 errorMessage = "加载田块失败：${e.message}"
             } finally {
+                // 修复：无论田块加载成败都按真实角色刷新管理员标志（失败时保守为 false）
+                try { isAdmin = repository.isAdmin() } catch (_: Exception) { isAdmin = false }
                 isLoading = false
             }
         }
@@ -77,23 +79,24 @@ class FarmViewModel : ViewModel() {
         scope.launch {
             try {
                 val list = repository.loadAllDevices()
-                android.util.Log.d("FarmVM",
-                    "loadAllDevices size=${list.size} | ${list.firstOrNull()?.let {
-                        "name=${it.name} on=${it.isOn} vs=${it.valveState} bat=${it.battery}"
-                    }}")
                 devices.clear()
                 devices.addAll(list)
             } catch (e: Exception) {
-                android.util.Log.w("FarmVM", "loadAllDevices FAIL: ${e.message}", e)
                 errorMessage = "加载设备失败：${e.message}"
             }
         }
     }
 
     // ── 按设备 ID 查找单个设备 ──
+/**
+     * 按设备 ID 查找单个设备（本地缓存查询，无网络请求）
+     */
     fun deviceById(id: String): Device? = devices.firstOrNull { it.id == id }
 
     // ── 按田块 ID 查询该田块下所有设备（本地缓存；远程加载见 loadFieldDevices）──
+/**
+     * 按田块 ID 过滤本地缓存中的设备（远端加载见 loadFieldDevices）
+     */
     fun devicesInField(fieldId: String): List<Device> = devices.filter { it.fieldId == fieldId }
 
     /** 从 API 加载某个田块下的设备，并合并进 devices 缓存 */
@@ -117,6 +120,9 @@ class FarmViewModel : ViewModel() {
     }
 
     // ── 切换某个设备的开关状态（通过 ThingsBoard RPC）──
+/**
+     * 切换设备开关（电动阀）：先本地乐观更新 UI，再发 RPC 到 TB；失败回滚提示
+     */
     fun toggleDevice(id: String, forceOn: Boolean? = null) {
         // 先本地乐观更新
         val idx = devices.indexOfFirst { it.id == id }
@@ -136,11 +142,6 @@ class FarmViewModel : ViewModel() {
                 }
             }
         }
-    }
-
-    // ── 模拟实时数据刷新（演示模式，无 API 时用；真实轮询见 refreshFromApi）──
-    fun refreshDeviceData() {
-        // 未接入时保留：真实项目由 loadAllDevices()/loadFieldDevices() 每 10 秒调用
     }
 
     /** 每 10 秒自动刷新（真实 API 轮询） */

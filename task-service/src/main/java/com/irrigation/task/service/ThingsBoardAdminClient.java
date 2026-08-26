@@ -6,14 +6,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.irrigation.task.config.ThingsBoardProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
 import java.net.URI;
 import java.net.URLDecoder;
@@ -46,7 +44,7 @@ public class ThingsBoardAdminClient {
     private static final long TOKEN_REFRESH_MARGIN_MS = 60_000L;
 
     private final ThingsBoardProperties props;
-    private final RestTemplate rest;
+    private final RestClient rest;
     private final ObjectMapper mapper = new ObjectMapper();
 
     /** 缓存的 SysAdmin token 与过期时刻（volatile：多线程可见性） */
@@ -59,7 +57,7 @@ public class ThingsBoardAdminClient {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout((int) props.getRpcTimeoutMs());
         factory.setReadTimeout((int) props.getRpcTimeoutMs());
-        this.rest = new RestTemplate(factory);
+        this.rest = RestClient.builder().requestFactory(factory).build();
     }
 
     /** 获取有效 SysAdmin token（线程安全；为空或即将过期时自动重新登录） */
@@ -174,22 +172,46 @@ public class ThingsBoardAdminClient {
 
     // ---------- 私有工具：统一 HTTP 构造，消除重复代码 ----------
 
+    /**
+     * 发送 JSON POST 请求（统一构造请求头 + 请求体）
+     * @param url      目标地址（TB REST）
+     * @param token    Bearer token；null 表示匿名请求（如登录）
+     * @param bodyJson 请求体（JsonNode，序列化为 JSON 字符串）
+     * @param respType 响应类型
+     */
+
     private <T> ResponseEntity<T> postJson(String url, String token, JsonNode bodyJson, Class<T> respType) {
-        HttpHeaders headers = baseHeaders(token);
-        return rest.postForEntity(url, new HttpEntity<>(bodyJson.toString(), headers), respType);
+        return rest.post()
+                .uri(url)
+                .headers(h -> copyHeaders(h, token))
+                .body(bodyJson.toString())
+                .retrieve()
+                .toEntity(respType);
     }
 
+    /**
+     * 发送 JSON GET 请求（带统一请求头）
+     * @param url      目标地址（TB REST）
+     * @param token    Bearer token；null 表示匿名请求
+     * @param respType 响应类型
+     */
     private <T> ResponseEntity<T> getJson(String url, String token, Class<T> respType) {
-        HttpHeaders headers = baseHeaders(token);
-        return rest.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), respType);
+        return rest.get()
+                .uri(url)
+                .headers(h -> copyHeaders(h, token))
+                .retrieve()
+                .toEntity(respType);
     }
 
-    private HttpHeaders baseHeaders(String token) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+    /**
+     * 统一请求头注入（Content-Type + 可选 Bearer token）
+     * @param target 目标 HttpHeaders
+     * @param token  Bearer token；null 表示匿名请求
+     */
+    private void copyHeaders(HttpHeaders target, String token) {
+        target.setContentType(MediaType.APPLICATION_JSON);
         if (token != null) {
-            headers.setBearerAuth(token);
+            target.setBearerAuth(token);
         }
-        return headers;
     }
 }

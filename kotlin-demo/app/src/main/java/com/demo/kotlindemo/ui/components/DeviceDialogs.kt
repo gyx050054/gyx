@@ -51,6 +51,9 @@ import java.util.TimeZone
  * @param onConfirm 确认操作的回调
  */
 @Composable
+/**
+     * 开关确认弹窗：操作前二次确认（含当前设备名与目标状态）
+     */
 fun SwitchDialog(
     device: Device,        // 目标设备
     onDismiss: () -> Unit, // 关闭回调
@@ -115,11 +118,14 @@ fun SwitchDialog(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+/**
+     * 定时任务时间范围弹窗：开始/结束日期时间选择 + 确认回调
+     */
 fun TimeRangeDialog(
     device: Device? = null,                    // 可选设备参数
     title: String = "⏰ 添加定时任务",          // 弹窗标题
     onDismiss: () -> Unit,                     // 关闭回调
-    onConfirm: (startTime: Long, endTime: Long) -> Unit  // 时间确认回调
+    onConfirm: (startTime: Long, endTime: Long, isDaily: Boolean, dailyHour: Int, durationMinutes: Int) -> Unit
 ) {
     // 获取当前时间（毫秒），remember 让它在重组时不变
     val now = remember { System.currentTimeMillis() }
@@ -128,6 +134,9 @@ fun TimeRangeDialog(
     var immediate by remember { mutableStateOf(true) }
     // 持续时长：默认 30 分钟（需求：间隔 1 分钟起步）
     var durationMs by remember { mutableStateOf(30 * 60_000L) }
+    // 每天自动浇水（第三代第一版 §2）
+    var isDaily by remember { mutableStateOf(false) }
+    var dailyHour by remember { mutableStateOf(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)) }
 
     AlertDialog(
         onDismissRequest = onDismiss,  // 关闭
@@ -146,13 +155,28 @@ fun TimeRangeDialog(
                     durationMs = durationMs,
                     onDurationChange = { durationMs = it }
                 )
+                // 每天自动浇水开关（DAILY 任务：每天到点自动开浇、到时自动关）
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("每天自动浇水", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Switch(checked = isDaily, onCheckedChange = { isDaily = it })
+                }
+                if (isDaily) {
+                    OutlinedTextField(
+                        value = dailyHour.toString(),
+                        onValueChange = { dailyHour = (it.toIntOrNull()?.coerceIn(0, 23)) ?: dailyHour },
+                        label = { Text("每天开始（小时 0-23）") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("持续时长：${durationMs / 60_000} 分钟", style = MaterialTheme.typography.bodySmall)
+                }
             }
         },
         confirmButton = {
             // 确定按钮：立即 = now；定时 = 选择的日期+时间；结束 = 开始 + 时长
             TextButton(onClick = {
                 val start = if (immediate) now else startTime
-                onConfirm(start, start + durationMs)
+                onConfirm(start, start + durationMs, isDaily, dailyHour, (durationMs / 60_000).toInt())
             }) { Text("确定") }
         },
         dismissButton = {
@@ -179,6 +203,9 @@ fun TimeRangeDialog(
  * @param onAddTiming 批量添加定时任务回调，参数为勾选的设备列表和起止时间戳
  */
 @Composable
+/**
+     * 批量操作弹窗：勾选设备后一键开启/关闭/批量定时
+     */
 fun BatchControlDialog(
     devices: List<Device>,                                                  // 可选设备列表
     onDismiss: () -> Unit,                                                  // 关闭回调
@@ -200,12 +227,18 @@ fun BatchControlDialog(
     val selectedDevices = devices.filter { it.id in selectedIds }
 
     // 切换某个设备的勾选状态
-    fun toggleSelect(id: String) {
+    /**
+     * 勾选/取消勾选单台设备（批量操作选择状态）
+     */
+fun toggleSelect(id: String) {
         selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id
     }
 
     // 全选/取消全选
-    fun toggleSelectAll() {
+    /**
+     * 全选/全不选（批量操作）
+     */
+fun toggleSelectAll() {
         selectedIds = if (selectedIds.size == devices.size && devices.isNotEmpty()) {
             emptySet()
         } else {
@@ -271,8 +304,10 @@ fun BatchControlDialog(
                                         maxLines = 1
                                     )
                                     Text(
-                                        // 状态副标题：传感器显示温湿度，其他显示状态+电量
-                                        if (device.type == DeviceType.SENSOR)
+                                        // 状态副标题：传感器显示温湿度/墒情，其他显示状态+电量
+                                        if (device.type == DeviceType.SOIL_SENSOR)
+                                            "🌱 盐分 ${device.soilSalinity}ppm  pH ${device.soilPh}"
+                                        else if (device.type == DeviceType.SENSOR)
                                             "🌡 ${device.temperature}℃  💧 ${device.humidity}%RH"
                                         else
                                             (if (device.isOn) "🟢 工作中" else "⚪ 未工作") + "  🔋${device.battery}%",
@@ -363,6 +398,9 @@ fun BatchControlDialog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+/**
+     * 时间选择子组件：日期+时分滚动选择器
+     */
 private fun TimingPicker(
     now: Long,                              // 当前时间
     immediate: Boolean,                     // 是否立即开始
@@ -501,6 +539,9 @@ private val dateFormatter get() = TimeFormats.DATE
 private val timeOfDayFormatter get() = TimeFormats.TIME
 
 // 用新日期（dateMillis 本地零点）替换原时间的日期部分，时分秒保留
+/**
+     * 合并日期与时间：用新日期（dateMillis 本地零点）替换原时间的日期部分
+     */
 private fun combineDateTime(dateMillis: Long, timeMillis: Long): Long {
     val t = Calendar.getInstance().apply { timeInMillis = timeMillis }
     return Calendar.getInstance().apply {
@@ -513,9 +554,15 @@ private fun combineDateTime(dateMillis: Long, timeMillis: Long): Long {
 }
 
 // 格式化日期（yyyy-MM-dd）
+/**
+     * 日期按钮显示格式化（yyyy-MM-dd）
+     */
 private fun formatDate(ts: Long): String = dateFormatter.format(Date(ts))
 
 // 格式化时分（HH:mm）
+/**
+     * 时间按钮显示格式化（HH:mm）
+     */
 private fun formatTimeOfDay(ts: Long): String = timeOfDayFormatter.format(Date(ts))
 
 /**

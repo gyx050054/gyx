@@ -30,6 +30,9 @@ import com.demo.kotlindemo.data.dto.CustomerDto
 // ViewModel
 
 @Composable
+/**
+     * 新增成员弹窗：角色单选（使用者/管理员）+ 归属（新建/加入家庭）+ 邮箱
+     */
 internal fun AddMemberDialog(
     families: List<CustomerDto>,
     onDismiss: () -> Unit,
@@ -168,6 +171,9 @@ internal fun AddMemberDialog(
  * 分配可见范围弹窗：勾选田块/设备，确认后调 TB 分配接口（按家庭分配，成员共享）
  */
 @Composable
+/**
+     * 分配可见范围弹窗：勾选田块/设备分配给家庭（成员共享）
+     */
 internal fun AssignScopeDialog(
     customer: CustomerDto,
     fields: List<com.demo.kotlindemo.data.model.Field>,

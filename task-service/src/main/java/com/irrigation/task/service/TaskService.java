@@ -1,12 +1,15 @@
 package com.irrigation.task.service;
 
 import com.irrigation.task.entity.Task;
+import com.irrigation.task.entity.TaskRun;
 import com.irrigation.task.repository.TaskRepository;
+import com.irrigation.task.repository.TaskRunRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -33,10 +36,13 @@ public class TaskService {
 
     private final TaskRepository taskRepository;
     private final ThingsBoardClient tbClient;
+    private final TaskRunRepository taskRunRepository;
 
-    public TaskService(TaskRepository taskRepository, ThingsBoardClient tbClient) {
+    public TaskService(TaskRepository taskRepository, ThingsBoardClient tbClient,
+                       TaskRunRepository taskRunRepository) {
         this.taskRepository = taskRepository;
         this.tbClient = tbClient;
+        this.taskRunRepository = taskRunRepository;
     }
 
     /**
@@ -63,12 +69,53 @@ public class TaskService {
     @Transactional
     public Task createTask(String deviceId, String deviceName, Long startTime, Long endTime, String action,
                            String tenantId) {
-        // 参数校验：时间必填且区间合法（endTime > startTime，文档要求间隔 ≥1 分钟由 APP 保证）
+        // 兼容原一次性调用（ONCE）
+        return createTask(deviceId, deviceName, startTime, endTime, action, tenantId,
+                Task.RepeatMode.ONCE, null, null);
+    }
+
+    /**
+     * 创建任务（支持一次性 ONCE / 每天 DAILY）
+     *
+     * DAILY 参数：repeatMode=DAILY + dailyHour(0-23) + durationMinutes(>0)；
+     *  落库时用当天 dailyHour 的窗口作为 startTime/endTime 的 initial（设计文档 §2.2），真正的重复由 dailyHour 驱动。
+     * ONCE 沿用 startTime/endTime。
+     *
+     * @return 新建任务；若冲突则返回 null（调用方据此提示"冲突拒绝"）
+     */
+    @Transactional
+    public Task createTask(String deviceId, String deviceName, Long startTime, Long endTime, String action,
+                           String tenantId, Task.RepeatMode repeatMode, Integer dailyHour, Integer durationMinutes) {
+        Task.RepeatMode mode = repeatMode == null ? Task.RepeatMode.ONCE : repeatMode;
+        if (mode == Task.RepeatMode.DAILY) {
+            // DAILY：参数校验 + 同设备去重/活跃任务冲突
+            if (dailyHour == null || dailyHour < 0 || dailyHour > 23 || durationMinutes == null || durationMinutes <= 0) {
+                throw new IllegalArgumentException("每日任务参数非法：dailyHour(0-23)/durationMinutes(>0) 必填");
+            }
+            if (hasDailyConflict(deviceId)) {
+                log.warn("每日任务冲突被拒：deviceId={}", deviceId);
+                return null;
+            }
+            // 以当天 dailyHour 窗口作为 initial 时间占位（DB 非空约束）
+            long[] window = dailyWindow(dailyHour, durationMinutes);
+            Task t = new Task();
+            t.setDeviceId(deviceId);
+            t.setDeviceName(deviceName == null ? deviceId : deviceName);
+            t.setStartTime(window[0]);
+            t.setEndTime(window[1]);
+            t.setAction(action == null ? DEFAULT_ACTION : action);
+            t.setRepeatMode(Task.RepeatMode.DAILY);
+            t.setDailyHour(dailyHour);
+            t.setDurationMinutes(durationMinutes);
+            t.setStatus(Task.Status.PENDING); // DAILY 常驻 PENDING = 闹钟挂起
+            t.setTenantId(tenantId);
+            return taskRepository.save(t);
+        }
+        // ONCE：原逻辑
         if (startTime == null || endTime == null || endTime <= startTime) {
             throw new IllegalArgumentException("时间参数非法：startTime/endTime 必填且 endTime > startTime");
         }
-        // 冲突检测：同一设备同一时段已有任务则拒绝创建（文档 ②）
-        if (hasConflict(deviceId, startTime, endTime)) {
+        if (dailyOverlapsOnce(deviceId, startTime, endTime) || hasConflict(deviceId, startTime, endTime)) {
             log.warn("任务冲突被拒：deviceId={} [{},{}]", deviceId, startTime, endTime);
             return null;
         }
@@ -78,9 +125,65 @@ public class TaskService {
         t.setStartTime(startTime);
         t.setEndTime(endTime);
         t.setAction(action == null ? DEFAULT_ACTION : action);
+        t.setRepeatMode(Task.RepeatMode.ONCE);
         t.setStatus(Task.Status.PENDING); // 新建任务固定为等待执行
         t.setTenantId(tenantId);          // 第二版多租户：任务归属租户（APP 从 JWT 解析）
         return taskRepository.save(t);
+    }
+
+    /**
+     * DAILY 任务冲突检测：同设备不允许有另一条活跃 DAILY 或其他 RUNNING 一次性任务
+     * （每日固定时段常驻，同一设备同一时刻只允许一个浇灌动作）
+     */
+    private boolean hasDailyConflict(String deviceId) {
+        for (Task t : taskRepository.findByDeviceId(deviceId)) {
+            if (t.getStatus() == Task.Status.RUNNING) {
+                return true; // 正在执行的一次性任务
+            }
+            if (t.getRepeatMode() == Task.RepeatMode.DAILY && t.getStatus() == Task.Status.PENDING) {
+                return true; // 已有活跃每天任务
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 一次性任务与同设备活跃 DAILY 任务每日窗口是否重叠。
+     * 若重叠，一次性任务相应时间段的浇灌会与每天任务冲突，拒建。
+     */
+    private boolean dailyOverlapsOnce(String deviceId, Long startTime, Long endTime) {
+        // 查找该设备活跃 DAILY 任务（PENDING）
+        Task daily = null;
+        for (Task t : taskRepository.findByDeviceId(deviceId)) {
+            if (t.getRepeatMode() == Task.RepeatMode.DAILY && t.getStatus() == Task.Status.PENDING) {
+                daily = t;
+                break;
+            }
+        }
+        if (daily == null || daily.getDailyHour() == null) {
+            return false;
+        }
+        long dailyStart = daily.getStartTime(); // initial 当天窗口（dailyHour 起点）
+        long dailyEnd = daily.getEndTime();
+        // 检查 [startTime,endTime) 是否落在同一设备 DAILY 的某天窗口内：取 DAILY 窗口所在日
+        long[] win = dailyWindowAt(daily.getDailyHour(), daily.getDurationMinutes() == null ? 0 : daily.getDurationMinutes(), startTime);
+        return startTime < win[1] && win[0] < endTime;
+    }
+
+    /** 计算 dailyHour + durationMinutes 在「今天」的毫秒窗口（用于 initial 占位） */
+    private long[] dailyWindow(int dailyHour, int durationMinutes) {
+        long now = Instant.now().toEpochMilli();
+        return dailyWindowAt(dailyHour, durationMinutes, now);
+    }
+
+    /** 计算 dailyHour 窗口：以 reference 所在自然日起算 */
+    private long[] dailyWindowAt(int dailyHour, int durationMinutes, long referenceTs) {
+        java.time.ZonedDateTime ref = java.time.ZonedDateTime.ofInstant(
+                Instant.ofEpochMilli(referenceTs), java.time.ZoneId.systemDefault());
+        java.time.ZonedDateTime start = ref.toLocalDate().atStartOfDay(java.time.ZoneId.systemDefault()).plusHours(dailyHour);
+        long startMs = start.toInstant().toEpochMilli();
+        long endMs = startMs + durationMinutes * 60_000L;
+        return new long[]{startMs, endMs};
     }
 
     /**
@@ -175,6 +278,13 @@ public class TaskService {
             return taskRepository.findAll();
         }
         return taskRepository.findByTenantId(tenantId);
+    }
+
+    /**
+     * 查询某任务的全部执行流水（每天任务 task_runs：App 展示"昨天浇没浇/是否因雨跳过"）
+     */
+    public List<TaskRun> listRuns(Long taskId) {
+        return taskRunRepository.findByTaskIdOrderByRunDateDesc(taskId);
     }
 
     /**

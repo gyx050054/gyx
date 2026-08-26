@@ -143,6 +143,8 @@ fun ChangePasswordScreen(
                         if (ok) {
                             // 改密成功 → 清除服务端强制改密标记
                             authRepo.markPasswordChanged(email)
+                            // 修复：TB changePassword 会使旧 JWT 失效，必须用新密码重新登录拿新 token
+                            authRepo.reloginAfterPasswordChange(email, newPassword)
                             onSuccess()  // 进入主界面
                         } else {
                             error = "修改密码失败，请稍后重试"

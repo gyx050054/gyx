@@ -15,6 +15,9 @@ object AuthInterceptor : Interceptor {
     @Volatile
     var token: String? = null
 
+/**
+     * 拦截请求并附加 Bearer token（内存优先，冷启动从 TokenStore 恢复）
+     */
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         // 内存没有 token 时从持久化存储恢复（App 冷启动后首次请求）

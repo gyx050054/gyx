@@ -48,6 +48,21 @@ class AuthRepository {
     }
 
     /**
+     * 改密后重新登录（修复：TB changePassword 会异步使旧 JWT 全部失效，
+     * 必须用新密码重新登录拿新 token，否则改密后进主页的请求全部 401）
+     * @return true=重新登录成功（token 非空）
+     */
+    suspend fun reloginAfterPasswordChange(email: String, newPassword: String): Boolean {
+        val resp = tb.login(mapOf("username" to email, "password" to newPassword))
+        AuthInterceptor.token = resp.token
+        if (resp.token.isNotEmpty()) {
+            TokenStore.save(resp.token)
+            return true
+        }
+        return false
+    }
+
+    /**
      * 查询邮箱是否仍需强制改密（首次登录流程判断用）
      */
     suspend fun mustChangePassword(email: String): Boolean =

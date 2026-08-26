@@ -24,6 +24,11 @@ public class RpcTaskExecutor implements TaskExecutor {
     }
 
     @Override
+    /**
+     * 执行任务开始动作：按任务 action 下发阀门控制（off=关闭，其余=开启）
+     * @param task 到点任务
+     * @return true=RPC 下发成功（任务置 RUNNING）；false=失败（保留 PENDING 重试）
+     */
     public boolean executeStart(Task task) {
         // 任务动作：off=关闭，其余一律视为开启（动作默认值已在 TaskService 收敛为 on/off）
         if ("off".equalsIgnoreCase(task.getAction())) {
@@ -33,6 +38,10 @@ public class RpcTaskExecutor implements TaskExecutor {
     }
 
     @Override
+    /**
+     * 执行任务收尾：到期自动关闭阀门（忽略返回，任务已转 COMPLETED 不再重复处理）
+     * @param task 超时任务
+     */
     public void executeFinish(Task task) {
         // 到期收尾：自动关闭阀门（忽略返回值，下一轮扫描不会重复处理该任务）
         tbClient.closeValve(task.getDeviceId());

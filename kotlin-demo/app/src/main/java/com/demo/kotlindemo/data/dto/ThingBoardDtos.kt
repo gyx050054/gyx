@@ -139,7 +139,23 @@ data class ServiceTask(
     val startTime: Long = 0L,
     val endTime: Long = 0L,
     val action: String = "on",
-    val status: String = "PENDING"
+    val status: String = "PENDING",
+    val repeatMode: String = "ONCE",      // ONCE / DAILY（第三天第一版 §2）
+    val dailyHour: Int? = null,           // DAILY 每天开始小时
+    val durationMinutes: Int? = null      // DAILY 持续时长（分钟）
+)
+
+// 微服务端每天任务执行流水（task_runs）
+data class TaskRunDto(
+    val id: Long = 0L,
+    val taskId: Long = 0L,
+    val deviceId: String = "",
+    val deviceName: String = "",
+    val runDate: String = "",
+    val startTs: Long? = null,
+    val endTs: Long? = null,
+    val action: String = "on",
+    val status: String = "PENDING"       // PENDING / COMPLETED / SKIPPED_WEATHER
 )
 
 // 微服务端通用响应：{success, message}（注册/改密标记等接口）
@@ -153,4 +169,51 @@ data class MustChangeResponse(
     val success: Boolean = false,
     val message: String = "",
     val mustChange: Boolean = false
+)
+
+// 微服务端告警规则（自研告警引擎）
+data class AlarmRuleDto(
+    val id: Long = 0L,
+    val name: String = "",
+    val deviceType: String = "ALL",
+    val metric: String = "",
+    val operator: String = "lt",
+    val threshold: Double? = null,
+    val severity: String = "MEDIUM",
+    val message: String = "",
+    val enabled: Boolean = true,
+    val tenantId: String? = null,
+    val createdAt: Long = 0L
+)
+
+// 微服务端告警记录
+data class AlarmRecordDto(
+    val id: Long = 0L,
+    val tenantId: String? = null,
+    val deviceId: String = "",
+    val deviceName: String = "",
+    val ruleId: Long = 0L,
+    val severity: String = "MEDIUM",
+    val message: String = "",
+    val status: String = "ACTIVE",
+    val firstAt: Long = 0L,
+    val lastAt: Long = 0L,
+    val resolvedAt: Long? = null
+)
+
+// 未确认告警计数响应：{success, message, count}
+data class UnreadCountResponse(
+    val success: Boolean = true,
+    val message: String = "",
+    val count: Long = 0L
+)
+
+// 天气响应：{success, message, weatherDesc, temperature, precipitation, precipProb1h}
+data class WeatherDto(
+    val success: Boolean = true,
+    val message: String = "",
+    val weatherDesc: String = "——",
+    val temperature: Double = Double.NaN,
+    val precipitation: Double = 0.0,
+    val precipProb1h: Int? = null
 )

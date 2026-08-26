@@ -18,6 +18,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableScheduling
 public class TaskServiceApplication {
 
+    /**
+     * 启动入口：Spring Boot 内嵌容器启动，自动装配全部 Bean 与定时扫描器
+     */
     public static void main(String[] args) {
         SpringApplication.run(TaskServiceApplication.class, args);
     }

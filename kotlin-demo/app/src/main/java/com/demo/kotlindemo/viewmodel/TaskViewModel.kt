@@ -84,13 +84,17 @@ class TaskViewModel : ViewModel() {
         }
     }
 
-    /** 添加单条定时任务；通过回调返回结果（第三版：冲突时回调携带 message，UI 弹清理确认） */
+    /** 添加单条定时任务；通过回调返回结果（第三版：冲突时回调携带 message，UI 弹清理确认）
+     *  @param repeatMode ONCE=一次性 / DAILY=每天；DAILY 需 dailyHour(0-23)+durationMinutes(分钟)，startTime/endTime 忽略 */
     fun addTask(deviceId: String, deviceName: String, startTime: Long, endTime: Long,
+                repeatMode: String = "ONCE", dailyHour: Int? = null, durationMinutes: Int? = null,
                 onResult: ((Boolean, String) -> Unit)? = null) {
         scope.launch {
             try {
                 ensureTenantId()
-                val resp = repository.createTask(deviceId, deviceName, startTime, endTime, tenantId = tenantId)
+                val resp = repository.createTask(
+                    deviceId, deviceName, startTime, endTime, tenantId = tenantId,
+                    repeatMode = repeatMode, dailyHour = dailyHour, durationMinutes = durationMinutes)
                 lastMessage = resp.message
                 if (resp.success) {
                     loadTasks()

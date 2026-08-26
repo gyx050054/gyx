@@ -31,6 +31,9 @@ import com.demo.kotlindemo.data.dto.MemberDto
 // ViewModel
 
 @Composable
+/**
+     * 家庭卡片：🏠 家庭名 + 成员行列表（邮箱/角色徽标/删除按钮）
+     */
 internal fun FamilyCard(
     family: CustomerDto,
     members: List<MemberDto>,

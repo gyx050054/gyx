@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.irrigation.task.entity.Task;
+import com.irrigation.task.entity.TaskRun;
 import com.irrigation.task.service.TaskService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -56,18 +57,35 @@ public class TaskController {
         Long end = body.has("endTime") ? body.get("endTime").asLong() : null;
         String action = body.path("action").asText(); // null 时由 TaskService 收敛为默认 on
         String tenantId = body.path("tenantId").asText(null); // 第二版多租户：可选，APP 从 JWT 解析提交
+        // 每日任务（第三代第一版 §2）：可选参数
+        String repeatModeStr = body.path("repeatMode").asText("ONCE"); // ONCE / DAILY
+        Integer dailyHour = body.has("dailyHour") ? body.get("dailyHour").asInt() : null;
+        Integer durationMinutes = body.has("durationMinutes") ? body.get("durationMinutes").asInt() : null;
+        Task.RepeatMode repeatMode = "DAILY".equalsIgnoreCase(repeatModeStr)
+                ? Task.RepeatMode.DAILY : Task.RepeatMode.ONCE;
 
-        // 参数预校验（与 TaskService 内部校验一致，双保险；非法直接 400）
-        if (deviceId.isEmpty() || start == null || end == null || end <= start) {
-            return ResponseEntity.badRequest().body(error("参数非法：deviceId/startTime/endTime 必填，endTime 需大于 startTime"));
+        // DAILY 任务：时长用 dailyHour+durationMinutes；ONCE：start/end 必填
+        if (repeatMode == Task.RepeatMode.DAILY) {
+            if (dailyHour == null || dailyHour < 0 || dailyHour > 23 || durationMinutes == null || durationMinutes <= 0) {
+                return ResponseEntity.badRequest().body(error("每日任务参数非法：需要 dailyHour(0-23) 与 durationMinutes(>0)"));
+            }
+            if (deviceId.isEmpty()) {
+                return ResponseEntity.badRequest().body(error("参数非法：deviceId 必填"));
+            }
+        } else {
+            if (deviceId.isEmpty() || start == null || end == null || end <= start) {
+                return ResponseEntity.badRequest().body(error("参数非法：deviceId/startTime/endTime 必填，endTime 需大于 startTime"));
+            }
         }
-        Task t = taskService.createTask(deviceId, deviceName, start, end, action, tenantId);
+        Task t = taskService.createTask(deviceId, deviceName, start, end, action, tenantId,
+                repeatMode, dailyHour, durationMinutes);
         if (t == null) {
-            ObjectNode resp = ok(false, "设备 " + deviceId + " 在此时段已有任务，添加失败（冲突）");
+            ObjectNode resp = ok(false, "设备 " + deviceId + " 此时段已有任务，添加失败（冲突）");
             return ResponseEntity.ok(resp);
         }
         ObjectNode resp = ok(true, "添加成功");
         resp.put("taskId", t.getId());
+        resp.put("repeatMode", t.getRepeatMode() == null ? "ONCE" : t.getRepeatMode().name());
         return ResponseEntity.ok(resp);
     }
 
@@ -107,6 +125,12 @@ public class TaskController {
     @GetMapping
     public List<Task> list(@RequestParam(required = false) String tenantId) {
         return taskService.listAll(tenantId);
+    }
+
+    /** 查询每天任务的全部执行流水（task_runs）：GET /api/tasks/{id}/runs */
+    @GetMapping("/{id}/runs")
+    public JsonNode runs(@PathVariable Long id) {
+        return mapper.valueToTree(taskService.listRuns(id));
     }
 
     /** 取消任务（软删除：置 CANCELLED；运行中先发 pauseValve 暂停） */

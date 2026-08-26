@@ -92,7 +92,12 @@ def activate_user_with_password(token, user_id, password):
     r = requests.get(BASE + "/api/user/{}/activationLinkInfo".format(user_id),
                      headers=H, timeout=15)
     r.raise_for_status()
-    activate_token = r.json()["activateToken"]
+    _info = r.json()
+    from urllib.parse import urlparse, parse_qs
+    _q = parse_qs(urlparse(_info.get("value", "")).query)
+    activate_token = _q.get("activateToken", [None])[0] or _info.get("activateToken")
+    if not activate_token:
+        raise RuntimeError("无法从激活信息中提取 activateToken: " + str(_info))
     r2 = requests.post(BASE + "/api/noauth/activate",
                        json={"activateToken": activate_token, "password": password}, timeout=15)
     r2.raise_for_status()
@@ -142,13 +147,16 @@ def ensure_demo_admin(sys_token):
 
 def build_demo_data(admin_token):
     """复用 tb_setup 的建模逻辑：9 田块 + 27 设备 + 关系（全部幂等）"""
-    print("\n=== 3. 演示数据建模（9 田块 × 1 温湿度计 + 2 电动阀） ===")
+    print("\n=== 3. 演示数据建模（9 田块 × 1 温湿度计 + 1 墒情检测器 + 2 电动阀） ===")
     # 设备/资产配置（get_or_create；Profile 为租户级，跨租户各自独立）
     valve_profile, _ = tb_setup.get_or_create_device_profile(admin_token, "VALVE")
     temp_profile, _ = tb_setup.get_or_create_device_profile(admin_token, "TEMPERATURE_HUMIDITY")
+    soil_profile, _ = tb_setup.get_or_create_device_profile(admin_token, "SOIL_MOISTURE")
     field_profile = tb_setup.get_or_create_asset_profile(admin_token, "FIELD")
 
     inventory = []
+    # 土壤墒情检测器：只在前 5 块田各建 1 台（第三代第一版 §3.1，其余田块不建）
+    SOIL_FIELDS = set(FIELD_NAMES[:5])   # 田地1~田地5
     for field_name in FIELD_NAMES:
         field_id = tb_setup.find_by_name("asset", field_name, admin_token)
         if field_id is None:
@@ -160,7 +168,7 @@ def build_demo_data(admin_token):
         sensor_name = "{}-温湿度计".format(field_name)
         sensor_id = tb_setup.find_by_name("device", sensor_name, admin_token)
         if sensor_id is None:
-            sensor_id = tb_setup.create_device(admin_token, sensor_name, temp_profile[0])
+            sensor_id = tb_setup.create_device(admin_token, sensor_name, temp_profile)
             print("    [新建] {}".format(sensor_name))
         tb_setup.ensure_relation(admin_token, field_id, sensor_id)
         inventory.append({
@@ -169,12 +177,26 @@ def build_demo_data(admin_token):
             "accessToken": tb_setup.get_access_token(admin_token, sensor_id)
         })
 
+        # 土壤墒情检测器（每田块 1 台；仅前 5 块田创建，其余田块不建）
+        if field_name in SOIL_FIELDS:
+            soil_name = "{}-墒情检测器".format(field_name)
+            soil_id = tb_setup.find_by_name("device", soil_name, admin_token)
+            if soil_id is None:
+                soil_id = tb_setup.create_device(admin_token, soil_name, soil_profile)
+                print("    [新建] {}".format(soil_name))
+            tb_setup.ensure_relation(admin_token, field_id, soil_id)
+            inventory.append({
+                "field": field_name, "deviceName": soil_name, "type": "SOIL_MOISTURE",
+                "deviceId": soil_id,
+                "accessToken": tb_setup.get_access_token(admin_token, soil_id)
+            })
+
         # 电动阀（每田块 2 台：灌溉阀门A / 灌溉阀门B）
         for vi in range(1, VALVES_PER_FIELD + 1):
             valve_name = "{}-灌溉阀门{}".format(field_name, "AB"[vi - 1])
             valve_id = tb_setup.find_by_name("device", valve_name, admin_token)
             if valve_id is None:
-                valve_id = tb_setup.create_device(admin_token, valve_name, valve_profile[0])
+                valve_id = tb_setup.create_device(admin_token, valve_name, valve_profile)
                 print("    [新建] {}".format(valve_name))
             tb_setup.ensure_relation(admin_token, field_id, valve_id)
             inventory.append({
@@ -208,9 +230,10 @@ def main():
         sys.exit(1)
 
     # 演示数据建模（复用 tb_setup，幂等）
-    build_demo_data(admin_token)
-    print("\n[结论] 演示环境就绪：登录 {} / {} 即可查看 9 田块 + 27 台设备数据".format(
-        DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD))
+    inventory = build_demo_data(admin_token)
+    total = len(inventory)
+    print("\n[结论] 演示环境就绪：登录 {} / {} 即可查看 9 田块 + {} 台设备数据（含前 5 田墒情机，第三代第一版 §3.1）".format(
+        DEMO_ADMIN_EMAIL, DEMO_ADMIN_PASSWORD, total))
 
 
 if __name__ == "__main__":

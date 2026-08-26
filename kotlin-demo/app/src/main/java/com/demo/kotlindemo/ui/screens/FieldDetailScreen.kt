@@ -31,10 +31,12 @@ import androidx.compose.ui.unit.dp
 // 导入数据模型
 import com.demo.kotlindemo.data.model.Device
 import com.demo.kotlindemo.data.model.DeviceType
+import com.demo.kotlindemo.data.model.isSensor
 // 导入弹窗
 import com.demo.kotlindemo.ui.components.BatchControlDialog
 import com.demo.kotlindemo.ui.components.SwitchDialog
 import com.demo.kotlindemo.ui.components.TimeRangeDialog
+import com.demo.kotlindemo.ui.components.FieldMapView
 // 导入 ViewModel
 import com.demo.kotlindemo.viewmodel.FarmViewModel
 import com.demo.kotlindemo.viewmodel.TaskViewModel
@@ -62,12 +64,15 @@ import java.util.Locale
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+/**
+     * 田块详情页：信息卡 + 批量操作/任务管理/挂载入口 + 设备列表（墒情/温湿度/阀门）10 秒刷新
+     */
 fun FieldDetailScreen(
     fieldId: String,              // 田块ID，从路由参数取
     farmViewModel: FarmViewModel,  // 农田 ViewModel
     taskViewModel: TaskViewModel,  // 任务 ViewModel
     onTaskManageClick: () -> Unit, // 任务管理回调
-    onDeviceHistoryClick: (String, String) -> Unit, // 历史数据回调
+    onDeviceHistoryClick: (String, String, String) -> Unit, // 历史数据回调（deviceId, name, type）
     onBack: () -> Unit             // 返回回调
 ) {
     // 根据 fieldId 查找田块
@@ -85,6 +90,8 @@ fun FieldDetailScreen(
     var showTimeDialog by remember { mutableStateOf<Device?>(null) }
     // 挂载自由设备弹窗：true=显示（第二版：田块详情挂自由设备）
     var showMountDevicesDialog by remember { mutableStateOf(false) }
+    // 田块地图模式：true=顶部显示 Leaflet 地图（第三代第一版 §6）
+    var mapMode by remember { mutableStateOf(false) }
 
     // 每 10 秒自动刷新设备状态（文档 3.7）：
     // 进入详情页先按田块加载设备（relations → 遥测），之后轮询该田块设备
@@ -105,6 +112,11 @@ fun FieldDetailScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },
+                actions = {  // 地图/列表切换（第三代第一版 §6）
+                    TextButton(onClick = { mapMode = !mapMode }) {
+                        Text(if (mapMode) "📋 列表" else "🗺️ 地图")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -119,6 +131,23 @@ fun FieldDetailScreen(
             contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // 田块地图（第三代第一版 §6，通过顶部按钮切换显示）
+            if (mapMode) {
+                item {
+                    FieldMapView(
+                        fieldName = field?.name ?: "田块",
+                        centerLat = field?.lat ?: 0.0,
+                        centerLon = field?.lon ?: 0.0,
+                        devices = devices,
+                        onDeviceClick = { name ->
+                            devices.firstOrNull { it.name == name }?.let { switchTarget = it }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(280.dp)
+                    )
+                }
+            }
             // ① 田块信息卡片
             item {
                 Card(
@@ -217,7 +246,7 @@ fun FieldDetailScreen(
                         onToggle = { farmViewModel.toggleDevice(device.id) },  // 切换开关
                         onMore = { switchTarget = device },  // 弹出更多弹窗
                         onTiming = { showTimeDialog = device },  // 弹出定时任务弹窗
-                        onHistory = { onDeviceHistoryClick(device.id, device.name) }  // 查看历史
+                        onHistory = { onDeviceHistoryClick(device.id, device.name, device.type.name) }  // 查看历史
                     )
                 }
             }
@@ -244,12 +273,15 @@ fun FieldDetailScreen(
         TimeRangeDialog(
             device = device,                             // 要设置的设备
             onDismiss = { showTimeDialog = null },        // 关闭弹窗
-            onConfirm = { start, end ->                   // 确认时间和日期
-                taskViewModel.addTask(                    // 添加定时任务
+            onConfirm = { start, end, isDaily, dailyHour, durationMinutes ->   // 确认时间/日期/每天
+                taskViewModel.addTask(                    // 添加定时任务（支持每天 DAILY）
                     deviceId = device.id,                 // 设备ID
                     deviceName = device.name,             // 设备名称
-                    startTime = start,                    // 开始时间
-                    endTime = end                         // 结束时间
+                    startTime = if (isDaily) 0L else start,
+                    endTime = if (isDaily) 0L else end,
+                    repeatMode = if (isDaily) "DAILY" else "ONCE",
+                    dailyHour = if (isDaily) dailyHour else null,
+                    durationMinutes = if (isDaily) durationMinutes else null
                 ) { ok, msg ->                            // 第三版：失败且因冲突 → 记录冲突设备，UI 弹清理确认
                     if (!ok && msg.contains("冲突")) {
                         taskViewModel.setConflict(device.name, device.id)
@@ -262,7 +294,7 @@ fun FieldDetailScreen(
 
     // 批量操作弹窗：勾选田块内设备后对选中设备批量操作
     if (showBatchDialog) {
-        val fieldDevices = devices.filter { it.type != DeviceType.SENSOR }
+        val fieldDevices = devices.filter { !it.type.isSensor }
         BatchControlDialog(
             devices = fieldDevices,                             // 本田块可操作设备
             onDismiss = { showBatchDialog = false },            // 关闭
@@ -336,6 +368,9 @@ fun FieldDetailScreen(
  * 显示图标、名称、状态、开关
  */
 @Composable
+/**
+     * 田块详情单设备行：图标/名称/状态/开关（阀门）/历史入口（传感器）
+     */
 private fun FieldDeviceRow(
     device: Device,          // 设备数据
     onToggle: () -> Unit,    // 开关切换回调
@@ -346,7 +381,7 @@ private fun FieldDeviceRow(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (device.type == DeviceType.SENSOR) Modifier.clickable { onHistory() } else Modifier)  // 传感器点击看历史
+            .then(if (device.type.isSensor) Modifier.clickable { onHistory() } else Modifier)  // 传感器点击看历史
     ) {
         Row(
             modifier = Modifier
@@ -359,8 +394,8 @@ private fun FieldDeviceRow(
                 imageVector = when (device.type) {
                     // 电动阀 → 水滴
                     DeviceType.VALVE -> Icons.Default.WaterDrop
-                    // 传感器 → 信号
-                    DeviceType.SENSOR -> Icons.Default.Sensors
+                    // 传感器/墒情检测器 → 信号
+                    DeviceType.SENSOR, DeviceType.SOIL_SENSOR -> Icons.Default.Sensors
                 },
                 contentDescription = null,
                 tint = if (device.isOn) MaterialTheme.colorScheme.primary  // 开启=主色
@@ -372,9 +407,12 @@ private fun FieldDeviceRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(device.name, style = MaterialTheme.typography.titleSmall)  // 设备名
                 Text(
-                    // 传感器显示温湿度，其他显示运行状态
-                    if (device.type == DeviceType.SENSOR) "🌡 ${device.temperature}℃  💧 ${device.humidity}%RH"
-                    else (if (device.isOn) "🟢 工作中" else "⚪ 未工作") + "  🔋${device.battery}%",
+                    // 传感器显示温湿度/墒情，其他显示运行状态
+                    when (device.type) {
+                        DeviceType.SENSOR -> "🌡 ${device.temperature}℃  💧 ${device.humidity}%RH"
+                        DeviceType.SOIL_SENSOR -> "🌱 盐分 ${device.soilSalinity}ppm  pH ${device.soilPh}"
+                        else -> (if (device.isOn) "🟢 工作中" else "⚪ 未工作") + "  🔋${device.battery}%"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -389,7 +427,7 @@ private fun FieldDeviceRow(
             }
 
             // 非传感器设备显示开关
-            if (device.type != DeviceType.SENSOR) {
+            if (!device.type.isSensor) {
                 Switch(checked = device.isOn, onCheckedChange = { onToggle() })
             }
 
@@ -399,7 +437,7 @@ private fun FieldDeviceRow(
             }
         }
         // 非传感器设备：添加定时任务按钮（对齐原型图）
-        if (device.type != DeviceType.SENSOR && device.isOnline) {
+        if (!device.type.isSensor && device.isOnline) {
             OutlinedButton(
                 onClick = onTiming,
                 modifier = Modifier
@@ -416,6 +454,9 @@ private fun FieldDeviceRow(
  * 列出全部自由设备（未归属田块），点选后挂载到当前田块
  */
 @Composable
+/**
+     * 挂载自由设备弹窗：列出未挂载设备勾选挂入本田块
+     */
 private fun MountDevicesDialog(
     freeDevices: List<Device>,   // 自由设备列表
     onDismiss: () -> Unit,       // 取消

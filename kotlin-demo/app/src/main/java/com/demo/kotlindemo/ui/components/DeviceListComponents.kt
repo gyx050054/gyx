@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 // 导入数据模型
 import com.demo.kotlindemo.data.model.Device
 import com.demo.kotlindemo.data.model.DeviceType
+import com.demo.kotlindemo.data.model.isSensor
 import com.demo.kotlindemo.data.model.Field
 // 导入「我的」页与用户 ViewModel（第二版）
 // 导入弹窗组件
@@ -63,13 +64,16 @@ import com.demo.kotlindemo.util.TimeFormats
 import java.util.Date
 
 @Composable
+/**
+     * 全部设备列表内容：阀门/传感器卡片 + 空态/加载态
+     */
 internal fun DevicesListContent(
     devices: List<Device>,            // 设备列表
     onToggle: (Device) -> Unit,       // 切换开关回调
     onLongPress: (Device) -> Unit,    // 长按/更多回调
     onTimingTask: (Device) -> Unit,   // 添加定时任务回调
     onBatchClick: () -> Unit,          // 批量操作回调
-    onHistoryClick: (String, String) -> Unit,  // 查看历史回调
+    onHistoryClick: (String, String, String) -> Unit,  // 查看历史回调（deviceId, name, type）
     onMount: (Device) -> Unit,         // 挂载到田块（自由设备，第二版）
     onUnmount: (Device) -> Unit,       // 取下设备（已挂载→自由，第三版）
     onRemount: (Device) -> Unit,       // 改挂到别的田块（第三版）
@@ -98,7 +102,7 @@ internal fun DevicesListContent(
                 device = device,              // 设备数据
                 onToggle = { onToggle(device) },   // 切换开关
                 onTiming = { onTimingTask(device) }, // 添加定时任务
-                onHistory = { onHistoryClick(device.id, device.name) }, // 查看历史
+                onHistory = { onHistoryClick(device.id, device.name, device.type.name) }, // 查看历史
                 onMount = { onMount(device) },      // 挂载到田块（自由设备）
                 onUnmount = { onUnmount(device) },   // 取下设备（已挂载→自由）
                 onRemount = { onRemount(device) },   // 改挂到别的田块
@@ -118,6 +122,9 @@ internal fun DevicesListContent(
  * 第三版升级：① 阀门卡片大开关 + 流量/水压/累计用水数据行；② 五个按钮收进菜单
  */
 @Composable
+/**
+     * 单台设备卡片：图标/名称/状态/大开关/更多菜单（阀门）/历史入口（传感器）
+     */
 internal fun DeviceCard(
     device: Device,          // 设备对象
     onToggle: () -> Unit,    // 开关切换回调
@@ -133,12 +140,12 @@ internal fun DeviceCard(
     var menuExpanded by remember { mutableStateOf(false) }
 
     // 是否可操作设备（阀门且在线）
-    val operable = device.type != DeviceType.SENSOR && device.isOnline
+    val operable = !device.type.isSensor && device.isOnline
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (device.type == DeviceType.SENSOR) Modifier.clickable { onHistory() } else Modifier),  // 传感器点击看历史
+            .then(if (device.type.isSensor) Modifier.clickable { onHistory() } else Modifier),  // 传感器点击看历史
 
         // 卡片颜色：开启时用二级容器色（醒目），关闭时用表面色
         colors = CardDefaults.cardColors(
@@ -219,7 +226,7 @@ internal fun DeviceCard(
                             enabled = false  // 纯展示，不可点
                         )
                         // 温湿度计：查看历史
-                        if (device.type == DeviceType.SENSOR) {
+                        if (device.type.isSensor) {
                             DropdownMenuItem(
                                 text = { Text("查看历史") },
                                 onClick = { menuExpanded = false; onHistory() }
@@ -259,7 +266,7 @@ internal fun DeviceCard(
             }
 
             // ── 数据行（第三版：阀门卡片升级——工作中显示流量/水压/累计用水/电量）──
-            if (device.type != DeviceType.SENSOR) {
+            if (!device.type.isSensor) {
                 Spacer(Modifier.height(10.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -279,6 +286,9 @@ internal fun DeviceCard(
  * 数据指标项（阀门卡片升级用）：指标名 + 数值 + 单位，小号展示
  */
 @Composable
+/**
+     * 阀门数据行小项：指标名 + 数值 + 单位（流量/水压/电量等）
+     */
 private fun MetricItem(label: String, value: String, unit: String, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
         Text(
@@ -306,6 +316,9 @@ private fun MetricItem(label: String, value: String, unit: String, modifier: Mod
  * 创建后为自由设备（不归属任何田块），接入凭证在下一步弹窗展示
  */
 @Composable
+/**
+     * 新增设备弹窗：名称 + 类型单选（电动阀/温湿度计）+ 提交回调
+     */
 internal fun AddDeviceDialog(
     onDismiss: () -> Unit,             // 取消
     onConfirm: (String, String) -> Unit // 确认（名称, 类型）
@@ -366,6 +379,9 @@ internal fun AddDeviceDialog(
  * 提示用户将凭证配置到真设备（需求文档：凭证展示 + 复制按钮）
  */
 @Composable
+/**
+     * 设备凭证弹窗：展示 accessToken + 复制按钮 + 配置说明
+     */
 internal fun TokenDialog(token: String, onDismiss: () -> Unit) {
     val clipboard = LocalClipboardManager.current
     AlertDialog(
@@ -403,6 +419,9 @@ internal fun TokenDialog(token: String, onDismiss: () -> Unit) {
  * 对应需求文档「挂载方式二：设备页选田块」
  */
 @Composable
+/**
+     * 挂载田块弹窗：自由设备选田块下拉 + 确认
+     */
 internal fun MountFieldDialog(
     fields: List<Field>,         // 可选田块列表
     onDismiss: () -> Unit,       // 取消
@@ -447,8 +466,9 @@ internal fun MountFieldDialog(
 internal fun deviceIcon(type: DeviceType) = when (type) {
     // VALVE（电动阀）→ WaterDrop（水滴图标）
     DeviceType.VALVE -> Icons.Default.WaterDrop
-    // SENSOR（传感器）→ Sensors（信号图标）
+    // SENSOR（传感器）/ SOIL_SENSOR（墒情检测器）→ Sensors（信号图标）
     DeviceType.SENSOR -> Icons.Default.Sensors
+    DeviceType.SOIL_SENSOR -> Icons.Default.Sensors
 }
 
 /**
@@ -456,8 +476,10 @@ internal fun deviceIcon(type: DeviceType) = when (type) {
  * 传感器显示温度湿度；其他设备显示在线/运行状态 + 电量
  */
 internal fun deviceSubtitle(device: Device): String = when (device.type) {
-    // 传感器显示温度和湿度
+    // 温湿度计显示空气温湿度
     DeviceType.SENSOR -> "🌡 ${device.temperature}℃  💧 ${device.humidity}%RH"
+    // 墒情检测器显示盐分/pH（第三代第一版 §3.1）
+    DeviceType.SOIL_SENSOR -> "🌱 盐分 ${device.soilSalinity}ppm  pH ${device.soilPh}"
     // 其他设备显示在线/运行状态 + 电量
     else -> when {
         !device.isOnline -> "❌ 离线"               // 离线
@@ -470,5 +492,8 @@ internal fun deviceSubtitle(device: Device): String = when (device.type) {
 internal val reportTimeFormatter get() = TimeFormats.TIME_HHMMSS
 
 // 把上报时间戳格式化为可读时间字符串
+/**
+     * 设备最近上报时间格式化（HH:mm:ss）
+     */
 internal fun formatReportTime(ts: Long) = reportTimeFormatter.format(Date(ts))
 

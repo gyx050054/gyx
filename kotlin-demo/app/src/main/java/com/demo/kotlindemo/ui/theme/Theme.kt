@@ -48,6 +48,9 @@ private val LightColorScheme = lightColorScheme(
 //   }
 //
 @Composable
+/**
+     * 应用级主题：统一 Material3 紫色配色 + 字体；darkTheme 参数供系统深色模式切换
+     */
 fun KotlinDemoTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),     // 默认自动跟随系统
     dynamicColor: Boolean = true,                    // Android 12+ 自动适配壁纸颜色

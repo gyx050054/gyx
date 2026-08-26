@@ -20,6 +20,8 @@ import androidx.compose.material.icons.automirrored.filled.Assignment
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Person
@@ -43,6 +45,7 @@ import androidx.compose.ui.unit.dp
 // 导入数据模型
 import com.demo.kotlindemo.data.model.Device
 import com.demo.kotlindemo.data.model.DeviceType
+import com.demo.kotlindemo.data.model.isSensor
 // 导入「我的」页与用户 ViewModel（第二版）
 import com.demo.kotlindemo.ui.screens.MineScreen
 import com.demo.kotlindemo.viewmodel.UserViewModel
@@ -55,6 +58,7 @@ import com.demo.kotlindemo.viewmodel.FarmViewModel
 // 导入 TokenStore（任务红点状态，第二版）
 import com.demo.kotlindemo.data.api.TokenStore
 import com.demo.kotlindemo.viewmodel.TaskViewModel
+import com.demo.kotlindemo.viewmodel.AlarmViewModel
 // 第三版重构：田块/设备列表组件与弹窗拆到 ui.components
 import com.demo.kotlindemo.ui.components.FieldsGridContent
 import com.demo.kotlindemo.ui.components.AddFieldDialog
@@ -71,10 +75,11 @@ import kotlinx.coroutines.delay
 /**
  * 底部导航栏的 Tab 枚举
  */
-// 定义两个 tab 类型
+// 定义 tab 类型
 private enum class MainTab {
     FIELDS,  // 区块 tab
     DEVICES, // 设备 tab
+    WEATHER, // 天气 tab（第三代第一版 §4.3）
     MINE     // 我的 tab（第二版新增：身份/退出/使用者管理）
 }
 
@@ -98,12 +103,22 @@ fun MainScreen(
     onLogout: () -> Unit,           // 退出登录回调
     onFieldClick: (String) -> Unit, // 点击田块回调，参数是 fieldId
     onTaskManageClick: () -> Unit,   // 点击任务管理回调
-    onDeviceHistoryClick: (String, String) -> Unit,  // 点击温湿度计查看历史
-    onUserManageClick: () -> Unit    // 使用者管理入口（第二版）
+    onDeviceHistoryClick: (String, String, String) -> Unit,  // 点击传感器查看历史（deviceId, name, type）
+    onUserManageClick: () -> Unit,    // 使用者管理入口（第二版）
+    alarmViewModel: AlarmViewModel,   // 告警 ViewModel（第四版：顶栏红点）
+    onAlarmClick: () -> Unit          // 点击告警铃铛回调
 ) {
     // ── 当前选中的 tab ──
     // remember 记住当前选中的 tab，默认是区块
     var currentTab by remember { mutableStateOf(MainTab.FIELDS) }
+
+    // 告警铃铛红点：周期刷新未确认计数（第四版）
+    LaunchedEffect(alarmViewModel) {
+        while (true) {
+            alarmViewModel.refreshUnread()
+            kotlinx.coroutines.delay(15000)
+        }
+    }
 
     // ── 弹窗状态 ──
     // 开关弹窗：null=不显示，非null=要显示的设备
@@ -149,7 +164,12 @@ fun MainScreen(
                 // 标题根据当前 tab 动态切换
                 title = {
                     Text(
-                        if (currentTab == MainTab.FIELDS) "🌾 田块总览" else "📡 所有设备信息",
+                        when (currentTab) {
+                            MainTab.FIELDS -> "🌾 田块总览"
+                            MainTab.WEATHER -> "🌤 天气"
+                            MainTab.DEVICES -> "📡 所有设备信息"
+                            MainTab.MINE -> "我的"
+                        },
                         fontWeight = FontWeight.SemiBold
                     )
                 },
@@ -188,6 +208,18 @@ fun MainScreen(
                     if (currentTab == MainTab.DEVICES && farmViewModel.isAdmin) {
                         IconButton(onClick = { showAddDeviceDialog = true }) {
                             Icon(Icons.Default.Add, contentDescription = "新增设备")
+                        }
+                    }
+                    // 告警铃铛入口（第四版：unreadCount>0 显示红点数字，点击进告警页）
+                    IconButton(onClick = onAlarmClick) {
+                        BadgedBox(
+                            badge = {
+                                if (alarmViewModel.unreadCount > 0) {
+                                    Badge { Text(if (alarmViewModel.unreadCount > 99) "99+" else alarmViewModel.unreadCount.toString()) }
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.Notifications, contentDescription = "告警")
                         }
                     }
                     // 任务管理入口按钮（第二版：有任务且未访问时显示红点，访问后消失）
@@ -245,6 +277,13 @@ fun MainScreen(
                     icon = { Icon(Icons.Default.Devices, contentDescription = null) },   // 图标
                     label = { Text("设备") }  // 标签文字
                 )
+                // 天气 tab 按钮（第三代第一版 §4.3）
+                NavigationBarItem(
+                    selected = currentTab == MainTab.WEATHER,
+                    onClick = { currentTab = MainTab.WEATHER },
+                    icon = { Icon(Icons.Default.WbSunny, contentDescription = null) },
+                    label = { Text("天气") }
+                )
                 // 我的 tab 按钮（第二版新增）
                 NavigationBarItem(
                     selected = currentTab == MainTab.MINE,   // 是否选中
@@ -293,13 +332,15 @@ fun MainScreen(
                     onLongPress = { showSwitchDialog = it },  // 长按弹出开关弹窗
                     onTimingTask = { showTimeDialog = it },   // 弹出定时任务弹窗
                     onBatchClick = { showBatchDialog = true },  // 弹出批量操作弹窗
-                    onHistoryClick = { id, name -> onDeviceHistoryClick(id, name) },  // 查看历史
+                    onHistoryClick = { id, name, type -> onDeviceHistoryClick(id, name, type) },  // 查看历史
                     onMount = { mountDeviceTarget = it },     // 挂载到田块（自由设备）
                     onUnmount = { unmountTarget = it },       // 取下设备（已挂载→自由，第三版）
                     onRemount = { remountTarget = it },       // 改挂到别的田块（第三版）
                     onDelete = { deleteDeviceTarget = it },    // 删除设备
                     isAdmin = farmViewModel.isAdmin             // 是否管理员（员工隐藏挂载/删除）
                 )
+                // 天气 tab（第三代第一版 §4.3）
+                MainTab.WEATHER -> WeatherContent()
                 // 我的 tab（第二版新增）：身份/使用者管理/退出
                 MainTab.MINE -> MineScreen(
                     userViewModel = userViewModel,
@@ -333,12 +374,15 @@ fun MainScreen(
         TimeRangeDialog(
             device = device,                             // 要设置的设备
             onDismiss = { showTimeDialog = null },        // 关闭弹窗
-            onConfirm = { start, end ->                   // 确认时间和日期
-                taskViewModel.addTask(                    // 添加定时任务
+            onConfirm = { start, end, isDaily, dailyHour, durationMinutes ->   // 确认时间/日期/每天
+                taskViewModel.addTask(                    // 添加定时任务（支持每天 DAILY）
                     deviceId = device.id,                 // 设备ID
                     deviceName = device.name,             // 设备名称
-                    startTime = start,                    // 开始时间
-                    endTime = end                         // 结束时间
+                    startTime = if (isDaily) 0L else start,
+                    endTime = if (isDaily) 0L else end,
+                    repeatMode = if (isDaily) "DAILY" else "ONCE",
+                    dailyHour = if (isDaily) dailyHour else null,
+                    durationMinutes = if (isDaily) durationMinutes else null
                 ) { ok, msg ->                            // 第三版：失败且因冲突 → 记录冲突设备，UI 弹清理确认
                     if (!ok && msg.contains("冲突")) {
                         taskViewModel.setConflict(device.name, device.id)
@@ -352,7 +396,7 @@ fun MainScreen(
     if (showBatchDialog) {
         BatchControlDialog(
             // 只列出可操作设备（电动阀等，不含温湿度传感器）
-            devices = farmViewModel.devices.filter { it.type != DeviceType.SENSOR },
+            devices = farmViewModel.devices.filter { !it.type.isSensor },
             onDismiss = { showBatchDialog = false },        // 关闭
             onTurnOn = { list ->                             // 一键开启（勾选设备）
                 list.forEach { farmViewModel.toggleDevice(it.id, forceOn = true) }

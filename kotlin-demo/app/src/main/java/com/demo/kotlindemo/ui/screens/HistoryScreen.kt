@@ -27,14 +27,19 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 温度湿度计 — 历史数据页面（需求文档 3.4）
+ * 历史数据页面（需求文档 3.4）
  *
- * - 折线图展示历史温度、湿度变化趋势
- * - 支持时间范围筛选：近 1 小时 / 近 24 小时 / 近 7 天
- * - 鼠标（点击）可查看具体数值和时间（MPAndroidChart 自带十字线+高亮）
+ * 按设备类型展示对应遥测曲线：
+ *  - 温度湿度计（SENSOR）：温度℃、湿度%RH
+ *  - 土壤墒情检测器（SOIL_SENSOR）：盐分 ppm、pH（第三代第一版 §3.1）
+ *
+ * - 折线图展示两条遥测键的变化趋势
+ * - 支持时间范围筛选：近 1 小时 / 近 24 小时 / 近 7 天 / 自定义
+ * - 可点击查看具体数值和时间（MPAndroidChart 自带十字线+高亮）
  *
  * @param deviceId 设备 ID（ThingsBoard deviceId）
  * @param deviceName 设备名称（标题显示）
+ * @param deviceType 设备类型（DeviceType.name：SENSOR / SOIL_SENSOR）
  * @param onBack 返回回调
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -42,6 +47,7 @@ import java.util.Locale
 fun HistoryScreen(
     deviceId: String,
     deviceName: String,
+    deviceType: String,
     onBack: () -> Unit
 ) {
     val repository = remember { ThingsBoardRepository() }
@@ -59,13 +65,21 @@ fun HistoryScreen(
     var customStart by remember { mutableStateOf("") }
     var customEnd by remember { mutableStateOf("") }
 
-    // 图表数据（温度/湿度两个系列）
+    // 依据设备类型确定展示的两条遥测键：SENSOR=温度/湿度，SOIL_SENSOR=盐分/pH
+    val isSoil = deviceType == "SOIL_SENSOR"
+    val keyA = if (isSoil) "soilSalinity" else "temperature"
+    val keyB = if (isSoil) "soilPh" else "humidity"
+
+    // 图表数据（两条遥测曲线系列）
     var tempPoints by remember { mutableStateOf<List<TelemetryItem>>(emptyList()) }
     var humPoints by remember { mutableStateOf<List<TelemetryItem>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
     // 加载历史数据
+/**
+     * 按当前时间范围加载历史遥测（设备/起止/聚合间隔来自 UI 状态）
+     */
     fun loadHistory() {
         scope.launch {
             loading = true
@@ -98,8 +112,8 @@ fun HistoryScreen(
                     }
                     Triple(s, e, interval)
                 }
-                val temp = repository.loadHistory(deviceId, "temperature", start, end, interval)["temperature"] ?: emptyList()
-                val hum = repository.loadHistory(deviceId, "humidity", start, end, interval)["humidity"] ?: emptyList()
+                val temp = repository.loadHistory(deviceId, keyA, start, end, interval)[keyA] ?: emptyList()
+                val hum = repository.loadHistory(deviceId, keyB, start, end, interval)[keyB] ?: emptyList()
                 tempPoints = temp
                 humPoints = hum
             } catch (e: Exception) {
@@ -195,14 +209,22 @@ fun HistoryScreen(
                     CircularProgressIndicator()
                 }
             } else {
-                // 温度曲线
-                Text("🌡 温度（℃）", style = MaterialTheme.typography.titleSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                // 第一条曲线（温度℃ 或 土壤盐分 ppm）
+                Text(
+                    if (isSoil) "🌱 盐分（ppm）" else "🌡 温度（℃）",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                )
                 LineChartView(tempPoints, lineColor = Color.rgb(244, 67, 54), Modifier.fillMaxWidth().height(220.dp))
 
                 Spacer(Modifier.height(16.dp))
 
-                // 湿度曲线
-                Text("💧 湿度（%RH）", style = MaterialTheme.typography.titleSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                // 第二条曲线（湿度%RH 或 pH）
+                Text(
+                    if (isSoil) "🧪 pH" else "💧 湿度（%RH）",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                )
                 LineChartView(humPoints, lineColor = Color.rgb(33, 150, 243), Modifier.fillMaxWidth().height(220.dp))
             }
         }
@@ -230,6 +252,9 @@ private fun parseCustomTime(text: String): Long? {
  * @param lineColor 折线颜色
  */
 @Composable
+/**
+     * 折线图组件（MPAndroidChart 封装）：渲染 ts/value 数据点，横轴用月日时分
+     */
 private fun LineChartView(
     points: List<TelemetryItem>,
     lineColor: Int,
@@ -278,7 +303,10 @@ private fun LineChartView(
             chart.data = LineData(dataSet)
             // x 轴标签显示时间
             chart.xAxis.valueFormatter = object : com.github.mikephil.charting.formatter.ValueFormatter() {
-                override fun getFormattedValue(value: Float): String {
+            /**
+     * 折线图数值轴格式化回调：把 Float 值转成整数文本
+     */
+    override fun getFormattedValue(value: Float): String {
                     val index = value.toInt().coerceIn(0, points.size - 1)
                     return timeFormatter.format(Date(points[index].ts))
                 }

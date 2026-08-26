@@ -4,6 +4,8 @@ package com.demo.kotlindemo.data.api
 import com.demo.kotlindemo.data.dto.ServiceTask
 import com.demo.kotlindemo.data.dto.TaskCreateResponse
 import com.demo.kotlindemo.data.dto.ServiceResponse
+import com.demo.kotlindemo.data.dto.WeatherDto
+import com.demo.kotlindemo.data.dto.TaskRunDto
 
 /**
  * 微服务端任务仓库（由原 FarmRepository 拆分出的「任务域」部分）
@@ -19,14 +21,17 @@ class TaskRepository {
 
     private val taskApi = ApiClient.taskService
 
-    /** 创建定时任务（单个设备；action 默认 on=开启；第三版：带当前租户 tenantId 实现跨公司隔离） */
+    /** 创建定时任务（单个设备；action 默认 on=开启；第三版：带当前租户 tenantId；第三/四版：可指定每天 DAILY） */
     suspend fun createTask(
         deviceId: String,
         deviceName: String,
         startTime: Long,
         endTime: Long,
         action: String = "on",
-        tenantId: String? = null
+        tenantId: String? = null,
+        repeatMode: String = "ONCE",
+        dailyHour: Int? = null,
+        durationMinutes: Int? = null
     ): TaskCreateResponse {
         return taskApi.createTask(
             mapOf(
@@ -35,10 +40,16 @@ class TaskRepository {
                 "startTime" to startTime,
                 "endTime" to endTime,
                 "action" to action,
-                "tenantId" to tenantId
+                "tenantId" to tenantId,
+                "repeatMode" to repeatMode,
+                "dailyHour" to dailyHour,
+                "durationMinutes" to durationMinutes
             )
         )
     }
+
+    /** 查询每天任务的执行流水（task_runs）：看昨天浇没浇/是否因雨跳过 */
+    suspend fun getTaskRuns(taskId: Long): List<TaskRunDto> = taskApi.getTaskRuns(taskId)
 
     /** 批量创建定时任务（多选设备；统一起止时间，全部 action=on；第三版：带当前租户） */
     suspend fun createTasksBatch(
@@ -64,4 +75,7 @@ class TaskRepository {
 
     /** 登记员工账号强制改密（第二版：创建员工后调用，首登走改密流程） */
     suspend fun markMustChange(email: String): ServiceResponse = taskApi.markMustChange(mapOf("email" to email))
+
+    /** 查询天气（第三代第一版 §4：微服务端 Open-Meteo 网关） */
+    suspend fun getWeather(lat: String, lon: String): WeatherDto = taskApi.getWeather(lat, lon)
 }

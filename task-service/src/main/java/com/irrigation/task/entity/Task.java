@@ -22,6 +22,11 @@ public class Task {
         CANCELLED    // 已取消（用户手动取消，软删除）
     }
 
+    /** 重复模式：ONCE=一次性（现有） / DAILY=每天重复（第三代第一版 §2） */
+    public enum RepeatMode {
+        ONCE, DAILY
+    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -33,16 +38,26 @@ public class Task {
     /** 设备名称（冗余，便于 APP 展示） */
     private String deviceName;
 
-    /** 开始时间戳（毫秒） */
+    /** 开始时间戳（毫秒）。ONCE 任务=计划开始；DAILY 任务=初始化首日时间（真正的重复由 dailyHour 驱动） */
     @Column(nullable = false)
     private Long startTime;
 
-    /** 结束时间戳（毫秒） */
+    /** 结束时间戳（毫秒）。ONCE 任务=计划结束；DAILY 任务可空，实际时长由 durationMinutes 决定 */
     @Column(nullable = false)
     private Long endTime;
 
     /** 动作：on=开启（默认）/ off=关闭 */
     private String action = "on";
+
+    /** 重复模式：ONCE / DAILY（第三代第一版 §2.1） */
+    @Enumerated(EnumType.STRING)
+    private RepeatMode repeatMode = RepeatMode.ONCE;
+
+    /** 每天开始小时（0-23，仅 DAILY 用） */
+    private Integer dailyHour;
+
+    /** 每天持续时长（分钟，仅 DAILY 用） */
+    private Integer durationMinutes;
 
     /** 任务状态 */
     @Enumerated(EnumType.STRING)
@@ -85,4 +100,13 @@ public class Task {
 
     public Long getCreatedAt() { return createdAt; }
     public void setCreatedAt(Long createdAt) { this.createdAt = createdAt; }
+
+    public RepeatMode getRepeatMode() { return repeatMode; }
+    public void setRepeatMode(RepeatMode repeatMode) { this.repeatMode = repeatMode; }
+
+    public Integer getDailyHour() { return dailyHour; }
+    public void setDailyHour(Integer dailyHour) { this.dailyHour = dailyHour; }
+
+    public Integer getDurationMinutes() { return durationMinutes; }
+    public void setDurationMinutes(Integer durationMinutes) { this.durationMinutes = durationMinutes; }
 }

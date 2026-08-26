@@ -159,6 +159,9 @@ fun TaskManagementScreen(
  *      删除由微服务端处理（未开始直接删 / 已开始发暂停）。
  */
 @Composable
+/**
+     * 单条任务卡片：状态点/文字/底色 + 勾选框（仅 PENDING/RUNNING 可勾）+ 删除
+     */
 private fun TaskCard(
     task: TimingTask,       // 任务数据
     selected: Boolean,      // 是否已勾选（第三版：批量停止用）
@@ -209,6 +212,15 @@ private fun TaskCard(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Medium
                 )
+                // 每天任务标注（第三代第一版 §2）
+                if (task.repeatMode == "DAILY") {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "🔁 每天 ${(task.dailyHour?.toString()?.padStart(2, '0')) ?: "--"}:00 浇 ${task.durationMinutes ?: "--"} 分钟",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
                 Spacer(Modifier.height(4.dp))
                 // 任务 ID（文档字段：任务 ID，展示前 8 位）
                 Text(
@@ -251,6 +263,9 @@ private fun TaskCard(
  * 颜色随状态变化
  */
 @Composable
+/**
+     * 状态圆点（🟢执行中/⏳等待/✅完成/🚫取消 的色点）
+     */
 private fun StatusDot(status: TaskStatus) {
     // 根据状态决定颜色（仅待执行/执行中被调用，统一用红色表示活跃任务）
     val color = when (status) {
@@ -274,6 +289,9 @@ private fun StatusDot(status: TaskStatus) {
  * 空态页面 — 列表为空时显示
  */
 @Composable
+/**
+     * 空列表占位：无任务时的提示文案
+     */
 private fun EmptyState(modifier: Modifier = Modifier) {
     Column(
         modifier = modifier,
@@ -310,9 +328,15 @@ private fun EmptyState(modifier: Modifier = Modifier) {
 private val timeFormatter get() = TimeFormats.MONTH_DAY_TIME
 
 // 格式化时间戳为可读字符串
+/**
+     * 任务时间显示格式化（月日时分）
+     */
 private fun formatTime(ts: Long) = timeFormatter.format(Date(ts))
 
 // 根据状态返回状态文字（带图标）
+/**
+     * 任务状态中文文案映射
+     */
 private fun statusText(s: TaskStatus) = when (s) {
     TaskStatus.PENDING   -> "⏳ 等待执行"    // 待执行
     TaskStatus.RUNNING   -> "🟢 执行中"     // 执行中
@@ -322,6 +346,9 @@ private fun statusText(s: TaskStatus) = when (s) {
 
 // 根据状态返回文字颜色
 @Composable
+/**
+     * 任务状态颜色映射（卡片底色/文字）
+     */
 private fun statusColor(s: TaskStatus) = when (s) {
     TaskStatus.PENDING   -> MaterialTheme.colorScheme.outline          // 灰色
     TaskStatus.RUNNING   -> MaterialTheme.colorScheme.primary          // 主色

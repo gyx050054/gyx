@@ -82,13 +82,7 @@ class UserViewModel : ViewModel() {
                 admins.clear()
                 admins.addAll(adminList)
             } catch (e: Exception) {
-                // 记录具体失败请求 URL + 服务端响应体（定位 500 来源用）
-                val he = e as? retrofit2.HttpException
-                val url = he?.response()?.raw()?.request?.url?.toString()
-                val body = he?.response()?.errorBody()?.string()
-                errorMessage = "加载成员列表失败：${e.message}" +
-                        (url?.let { " @ $it" } ?: "") +
-                        (body?.take(200)?.let { " | $it" } ?: "")
+                errorMessage = "加载成员列表失败：${e.message}"
             } finally {
                 isLoading = false
             }

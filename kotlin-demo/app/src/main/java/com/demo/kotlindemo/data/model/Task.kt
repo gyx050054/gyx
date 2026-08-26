@@ -38,7 +38,10 @@ data class TimingTask(
     val startTime: Long,                // 开始时间戳
     val endTime: Long,                  // 结束时间戳
     val action: String = "on",          // 动作，默认开启
-    val status: TaskStatus = TaskStatus.PENDING  // 状态，默认待执行
+    val status: TaskStatus = TaskStatus.PENDING,  // 状态，默认待执行
+    val repeatMode: String = "ONCE",    // ONCE / DAILY（第三代第一版 §2）
+    val dailyHour: Int? = null,         // DAILY 每天开始小时
+    val durationMinutes: Int? = null    // DAILY 持续时长（分钟）
 )
 
 // ================= DTO → 模型 转换（集中在本文件，与模型高内聚） =================
@@ -61,6 +64,9 @@ fun ServiceTask.toTimingTask(): TimingTask {
         startTime = startTime,
         endTime = endTime,
         action = action,
-        status = status
+        status = status,
+        repeatMode = repeatMode,
+        dailyHour = dailyHour,
+        durationMinutes = durationMinutes
     )
 }

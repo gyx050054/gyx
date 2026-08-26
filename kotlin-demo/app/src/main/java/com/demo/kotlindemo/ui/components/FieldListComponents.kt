@@ -55,6 +55,9 @@ import com.demo.kotlindemo.data.api.TokenStore
 // 导入日期格式化（显示最近上报时间）
 
 @Composable
+/**
+     * 田块网格内容：田块卡片列表 + 新增田块入口（管理员可见）
+     */
 internal fun FieldsGridContent(
     fields: List<Field>,            // 田块列表
     selectionMode: Boolean,         // 是否删除选择模式（第二版）
@@ -106,6 +109,9 @@ internal fun FieldsGridContent(
  * 输入名称 → 确认后调 FarmViewModel.createField
  */
 @Composable
+/**
+     * 新增田块弹窗：名称输入 + 提交回调
+     */
 internal fun AddFieldDialog(
     onDismiss: () -> Unit,     // 取消
     onConfirm: (String) -> Unit // 确认（携带田块名称）
@@ -143,6 +149,9 @@ internal fun AddFieldDialog(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+/**
+     * 单块田块卡片：名称 + 设备数 + 土壤墒情角标（可选，管理员删除模式）
+     */
 internal fun FieldCard(
     field: Field,
     selected: Boolean,       // 选择模式下是否已勾选

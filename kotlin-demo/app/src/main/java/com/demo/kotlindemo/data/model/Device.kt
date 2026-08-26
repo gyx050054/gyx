@@ -6,16 +6,20 @@ import com.demo.kotlindemo.data.dto.TelemetryItem
 
 /**
  * 设备类型枚举
- *  - VALVE    电动阀（控制灌溉阀门开关）
- *  - SENSOR   温湿度传感器（采集土壤数据）
- *  - PUMP     施肥泵（控制施肥）
- *  - FAN      通风扇（控制通风）
+ *  - VALVE       电动阀（可控制灌溉阀门开关）
+ *  - SENSOR      温湿度传感器（采集空气温湿度，不可操作）
+ *  - SOIL_SENSOR 土壤墒情检测器（采集土壤盐分/酸碱度，不可操作）
  */
 // 定义一个枚举类，表示所有可能的设备类型
 enum class DeviceType {
-    VALVE,     // 电动阀（可操作）
-    SENSOR     // 温湿度传感器（不可操作）
+    VALVE,       // 电动阀（可操作）
+    SENSOR,      // 温湿度传感器（不可操作）
+    SOIL_SENSOR  // 土壤墒情检测器（不可操作，看盐分/pH）
 }
+
+/** 是否为只读传感器（温湿度计/墒情检测器）：不可操作、点击看历史 */
+val DeviceType.isSensor: Boolean
+    get() = this != DeviceType.VALVE
 
 /**
  * 设备数据模型
@@ -53,7 +57,11 @@ data class Device(
     val instantFlow: Double = 0.0,   // 瞬时流量 L/min
     val totalWaterUsage: Double = 0.0, // 累计用水量 m³
     val waterPressure: Double = 0.0, // 管道水压 MPa
-    val faultStatus: Boolean = false // 是否故障
+    val faultStatus: Boolean = false, // 是否故障
+    val soilSalinity: Double = 0.0,   // 土壤盐分 ppm（墒情检测器）
+    val soilPh: Double = 0.0,          // 土壤 pH（墒情检测器）
+    val lat: Double = 0.0,             // 设备经度（地图用，第三代 §6）
+    val lon: Double = 0.0              // 设备纬度（地图用）
 )
 
 // ================= DTO → 模型 转换（集中在本文件，与模型高内聚） =================
@@ -67,8 +75,9 @@ data class Device(
 fun DeviceInfoDto.toDevice(fieldId: String?): Device {
     val type = when (this.type) {
         "TEMPERATURE_HUMIDITY" -> DeviceType.SENSOR
+        "SOIL_MOISTURE" -> DeviceType.SOIL_SENSOR
         "VALVE" -> DeviceType.VALVE
-        else -> DeviceType.VALVE
+        else -> DeviceType.SENSOR  // 未知类型按只读传感器处理（不给操作权限）
     }
     return Device(
         id = id.id,
@@ -87,6 +96,9 @@ fun DeviceInfoDto.toDevice(fieldId: String?): Device {
  * instantFlow/totalWaterUsage/waterPressure/faultStatus
  */
 fun Device.applyTelemetry(telemetry: Map<String, List<TelemetryItem>>): Device {
+/**
+     * 取指定遥测键的最新值（遥测按 ts 倒序时 first 即最新）
+     */
     fun latest(key: String): String? = telemetry[key]?.firstOrNull()?.value
 
     val valveState = latest("valveState")
@@ -97,6 +109,8 @@ fun Device.applyTelemetry(telemetry: Map<String, List<TelemetryItem>>): Device {
     val usage = latest("totalWaterUsage")?.toDoubleOrNull()
     val pressure = latest("waterPressure")?.toDoubleOrNull()
     val fault = latest("faultStatus")?.toBooleanStrictOrNull() ?: false
+    val soilS = latest("soilSalinity")?.toDoubleOrNull()
+    val soilP = latest("soilPh")?.toDoubleOrNull()
     val ts = telemetry.values.firstOrNull()?.firstOrNull()?.ts ?: lastReportAt
 
     return copy(
@@ -109,6 +123,8 @@ fun Device.applyTelemetry(telemetry: Map<String, List<TelemetryItem>>): Device {
         totalWaterUsage = usage ?: totalWaterUsage,
         waterPressure = pressure ?: waterPressure,
         faultStatus = fault,
+        soilSalinity = soilS ?: soilSalinity,
+        soilPh = soilP ?: soilPh,
         lastReportAt = ts
     )
 }

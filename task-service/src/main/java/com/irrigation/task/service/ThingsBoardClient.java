@@ -6,15 +6,16 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.irrigation.task.config.ThingsBoardProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * ThingsBoard REST 客户端（设备网关实现）
@@ -40,7 +41,7 @@ public class ThingsBoardClient {
     private static final long TOKEN_REFRESH_MARGIN_MS = 60_000L;
 
     private final ThingsBoardProperties props;
-    private final RestTemplate rest;
+    private final RestClient rest;
     private final ObjectMapper mapper = new ObjectMapper();
 
     /** 缓存的有效 token 与过期时刻（volatile：多线程可见性） */
@@ -53,7 +54,7 @@ public class ThingsBoardClient {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout((int) props.getRpcTimeoutMs());
         factory.setReadTimeout((int) props.getRpcTimeoutMs());
-        this.rest = new RestTemplate(factory);
+        this.rest = RestClient.builder().requestFactory(factory).build();
     }
 
     /**
@@ -143,11 +144,106 @@ public class ThingsBoardClient {
      * @param respType 响应类型
      */
     private <T> ResponseEntity<T> postJson(String url, String token, JsonNode bodyJson, Class<T> respType) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        if (token != null) {
-            headers.setBearerAuth(token);
+        // RestClient（Spring 6.1+，官方推荐替代 RestTemplate）：链式构建请求，语义清晰
+        return rest.post()
+                .uri(url)
+                .headers(h -> {
+                    h.setContentType(MediaType.APPLICATION_JSON);
+                    if (token != null) {
+                        h.setBearerAuth(token);
+                    }
+                })
+                .body(bodyJson.toString())
+                .retrieve()
+                .toEntity(respType);
+    }
+
+    // ---------- 告警引擎数据读取（自研告警引擎用） ----------
+
+    /**
+     * 发送 JSON GET 请求（统一构造请求头）
+     * @param url      目标地址（TB REST）
+     * @param token    Bearer token
+     * @param respType 响应类型
+     */
+    private <T> ResponseEntity<T> getJson(String url, String token, Class<T> respType) {
+        return rest.get()
+                .uri(url)
+                .headers(h -> {
+                    if (token != null) {
+                        h.setBearerAuth(token);
+                    }
+                })
+                .retrieve()
+                .toEntity(respType);
+    }
+
+    /** 设备信息（扫描告警时按类型枚举设备用） */
+    public record DeviceBrief(String id, String name, String type) {}
+
+    /**
+     * 按设备类型分页拉取租户下设备（告警扫描：规则按 deviceType 匹配设备）
+     * @param deviceType TB 的设备 Profile 类型名，如 VALVE / TEMPERATURE_HUMIDITY / SOIL_MOISTURE；null=全部
+     * @return 设备列表（id/name/type）
+     */
+    public List<DeviceBrief> listDevicesByType(String deviceType) {
+        List<DeviceBrief> result = new ArrayList<>();
+        int page = 0;
+        int pageSize = 100;
+        while (true) {
+            String q = "pageSize=" + pageSize + "&page=" + page + "&sortProperty=name&sortOrder=ASC";
+            if (deviceType != null && !deviceType.isBlank()) {
+                q += "&type=" + deviceType;
+            }
+            ResponseEntity<JsonNode> resp = getJson(
+                    props.getBaseUrl() + "/api/tenant/deviceInfos?" + q, getToken(), JsonNode.class);
+            JsonNode body = resp.getBody();
+            if (body == null) {
+                break;
+            }
+            JsonNode data = body.get("data");
+            if (data == null || !data.isArray()) {
+                break;
+            }
+            for (JsonNode d : data) {
+                result.add(new DeviceBrief(
+                        d.path("id").path("id").asText(),
+                        d.path("name").asText(),
+                        d.path("type").asText()));
+            }
+            int totalPages = body.path("totalPages").asInt(-1);
+            if (totalPages < 0 || page >= totalPages - 1) {
+                break;
+            }
+            page++;
         }
-        return rest.postForEntity(url, new HttpEntity<>(bodyJson.toString(), headers), respType);
+        return result;
+    }
+
+    /**
+     * 查询某设备某遥测键的最新值（告警扫描：读实时值判规则）
+     * @param deviceId ThingsBoard 设备 ID
+     * @param key      遥测键名，如 soilSalinity / temperature / batteryLevel
+     * @return 最新值字符串；无数据返回 null
+     */
+    public String latestTelemetry(String deviceId, String key) {
+        try {
+            ResponseEntity<JsonNode> resp = getJson(
+                    props.getBaseUrl() + "/api/plugins/telemetry/DEVICE/" + deviceId
+                            + "/values/timeseries?keys=" + key,
+                    getToken(), JsonNode.class);
+            JsonNode node = resp.getBody();
+            if (node == null || node.isNull()) {
+                return null;
+            }
+            JsonNode arr = node.get(key);
+            if (arr == null || arr.size() == 0) {
+                return null;
+            }
+            return arr.get(0).path("value").asText();
+        } catch (Exception e) {
+            log.warn("拉取遥测失败 deviceId={} key={}: {}", deviceId, key, e.getMessage());
+            return null;
+        }
     }
 }

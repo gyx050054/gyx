@@ -37,4 +37,10 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 
     /** 查询某设备上所有未完成任务（PENDING/RUNNING）——删除设备时级联取消用 */
     List<Task> findByDeviceIdAndStatusIn(String deviceId, List<Task.Status> statuses);
+
+    /** 按重复模式查询指定状态的任务（扫描 DAILY 闹钟用） */
+    List<Task> findByRepeatModeAndStatus(Task.RepeatMode repeatMode, Task.Status status);
+
+    /** 查询某设备上所有任务（含各类重复模式），用于 DAILY 同设备去重与冲突判定 */
+    List<Task> findByDeviceId(String deviceId);
 }

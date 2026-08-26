@@ -19,6 +19,8 @@ import com.demo.kotlindemo.ui.screens.RegisterScreen
 import com.demo.kotlindemo.ui.screens.ChangePasswordScreen
 import com.demo.kotlindemo.ui.screens.FaqScreen
 import com.demo.kotlindemo.ui.screens.UserManagementScreen
+import com.demo.kotlindemo.ui.screens.AlarmScreen
+import com.demo.kotlindemo.ui.screens.AlarmRuleScreen
 // 导入 URL 编码（设备名可能含中文）
 import android.net.Uri
 // 导入 ViewModel 创建函数
@@ -27,6 +29,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.demo.kotlindemo.viewmodel.FarmViewModel
 import com.demo.kotlindemo.viewmodel.TaskViewModel
 import com.demo.kotlindemo.viewmodel.UserViewModel
+import com.demo.kotlindemo.viewmodel.AlarmViewModel
 
 /**
  * 路由常量对象
@@ -50,8 +53,12 @@ object Routes {
     const val TASKS = "tasks"
     // 田块详情页路由名（带参数 fieldId）
     const val FIELD = "field/{fieldId}"
-    // 历史数据页路由名（带参数 deviceId / deviceName）
-    const val HISTORY = "history/{deviceId}/{deviceName}"
+    // 历史数据页路由名（带参数 deviceId / deviceName / deviceType）
+    const val HISTORY = "history/{deviceId}/{deviceName}/{deviceType}"
+    // 告警列表页路由名
+    const val ALARMS = "alarms"
+    // 告警规则管理页路由名
+    const val ALARM_RULES = "alarm_rules"
 
     /**
      * 生成田块详情页的完整路由
@@ -71,9 +78,10 @@ object Routes {
      * 生成历史数据页的完整路由
      * @param deviceId 设备ID
      * @param deviceName 设备名称（URL 编码）
+     * @param deviceType 设备类型（DeviceType.name，如 SENSOR / SOIL_SENSOR），决定历史曲线展示哪些键
      */
-    fun history(deviceId: String, deviceName: String) =
-        "history/$deviceId/${Uri.encode(deviceName)}"
+    fun history(deviceId: String, deviceName: String, deviceType: String) =
+        "history/$deviceId/${Uri.encode(deviceName)}/$deviceType"
 }
 
 /**
@@ -91,6 +99,8 @@ fun AppNavGraph(navController: NavHostController) {
     val taskViewModel: TaskViewModel = viewModel()
     // 创建共享的 UserViewModel（第二版：员工管理）
     val userViewModel: UserViewModel = viewModel()
+    // 创建共享的 AlarmViewModel（第四版：告警引擎）
+    val alarmViewModel: AlarmViewModel = viewModel()
 
     // NavHost 是导航容器，startDestination 是起始页
     NavHost(
@@ -180,12 +190,33 @@ fun AppNavGraph(navController: NavHostController) {
                 onTaskManageClick = {            // 点击任务管理回调
                     navController.navigate(Routes.TASKS)
                 },
-                onDeviceHistoryClick = { deviceId, deviceName ->   // 点击温湿度计查看历史
-                    navController.navigate(Routes.history(deviceId, deviceName))
+                onDeviceHistoryClick = { deviceId, deviceName, deviceType ->   // 点击传感器查看历史
+                    navController.navigate(Routes.history(deviceId, deviceName, deviceType))
                 },
                 onUserManageClick = {            // 使用者管理入口（第二版）
                     navController.navigate(Routes.USER_MANAGE)
+                },
+                alarmViewModel = alarmViewModel, // 告警 ViewModel（第四版）
+                onAlarmClick = {                 // 点击告警铃铛
+                    navController.navigate(Routes.ALARMS)
                 }
+            )
+        }
+
+        // 告警列表页（第四版：自研告警引擎）
+        composable(Routes.ALARMS) {
+            AlarmScreen(
+                alarmViewModel = alarmViewModel,
+                onBack = { navController.popBackStack() },
+                onManageRules = { navController.navigate(Routes.ALARM_RULES) }
+            )
+        }
+
+        // 告警规则管理页（第四版：仅管理员）
+        composable(Routes.ALARM_RULES) {
+            AlarmRuleScreen(
+                alarmViewModel = alarmViewModel,
+                onBack = { navController.popBackStack() }
             )
         }
 
@@ -208,19 +239,21 @@ fun AppNavGraph(navController: NavHostController) {
                 onTaskManageClick = {           // 田块详情页内点击任务管理
                     navController.navigate(Routes.TASKS)
                 },
-                onDeviceHistoryClick = { deviceId, deviceName ->   // 点击温湿度计查看历史
-                    navController.navigate(Routes.history(deviceId, deviceName))
+                onDeviceHistoryClick = { deviceId, deviceName, deviceType ->   // 点击传感器查看历史
+                    navController.navigate(Routes.history(deviceId, deviceName, deviceType))
                 },
                 onBack = { navController.popBackStack() }  // 返回上一页
             )
         }
-        // 注册历史数据页路由，使用 {deviceId}/{deviceName} 占位符接收参数
+        // 注册历史数据页路由，使用 {deviceId}/{deviceName}/{deviceType} 占位符接收参数
         composable(Routes.HISTORY) { entry ->
             val deviceId = entry.arguments?.getString("deviceId") ?: ""
             val deviceName = entry.arguments?.getString("deviceName") ?: "历史数据"
+            val deviceType = entry.arguments?.getString("deviceType") ?: "SENSOR"
             HistoryScreen(
                 deviceId = deviceId,
                 deviceName = deviceName,
+                deviceType = deviceType,
                 onBack = { navController.popBackStack() }
             )
         }

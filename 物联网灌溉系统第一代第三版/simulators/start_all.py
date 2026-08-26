@@ -16,6 +16,14 @@ import config
 import device_registry
 
 
+# 设备类型 -> 模拟器脚本 映射（新增设备类型时在此登记）
+SIMULATOR_SCRIPT = {
+    "VALVE": "valve_simulator.py",
+    "TEMPERATURE_HUMIDITY": "sensor_simulator.py",
+    "SOIL_MOISTURE": "soil_simulator.py",
+}
+
+
 def main():
     limit = None
     if "--limit" in sys.argv:
@@ -26,8 +34,8 @@ def main():
     os.makedirs(config.LOG_DIR, exist_ok=True)
 
     for it in inv:
-        # 按设备类型选择对应模拟器脚本（类型枚举：VALVE / TEMPERATURE_HUMIDITY）
-        script = "valve_simulator.py" if it["type"] == "VALVE" else "sensor_simulator.py"
+        # 按设备类型选择对应模拟器脚本（类型枚举：VALVE / TEMPERATURE_HUMIDITY / SOIL_MOISTURE）
+        script = SIMULATOR_SCRIPT.get(it["type"], "sensor_simulator.py")
         logf = open(os.path.join(config.LOG_DIR, "{}.log".format(it["deviceName"])), "a", encoding="utf-8")
         p = subprocess.Popen(
             [sys.executable, "-u", os.path.join(config.HERE, script), it["accessToken"], config.HOST, str(config.PORT)],

@@ -13,6 +13,7 @@ import com.demo.kotlindemo.data.model.DeviceType
 import com.demo.kotlindemo.data.model.Field
 import com.demo.kotlindemo.data.model.applyTelemetry
 import com.demo.kotlindemo.data.model.toDevice
+import com.demo.kotlindemo.util.FieldCoords
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -75,11 +76,14 @@ class ThingsBoardRepository {
                 async {
                     // 每个田块查 Contains 关系，统计设备数
                     val relations = api.getAssetRelations(asset.id.id)
+                    val center = FieldCoords.centerFor(asset.name)
                     Field(
                         id = asset.id.id,
                         name = asset.name,
                         deviceCount = relations.size,
-                        activeCount = relations.size // 设备在线数由详情页实时查，这里先用总数
+                        activeCount = relations.size, // 设备在线数由详情页实时查，这里先用总数
+                        lat = center.first,
+                        lon = center.second
                     )
                 }
             }.awaitAll()
@@ -370,6 +374,7 @@ class ThingsBoardRepository {
      */
     suspend fun loadMembers(): List<MemberDto> = withContext(Dispatchers.IO) {
         val customers = api.getCustomers(pageSize = AppConfig.PAGE_SIZE, page = 0).data
+            .filter { it.title != "Public" && it.name != "Public" }  // 与 loadCustomers 一致：排除 TB 默认客户
         customers.flatMap { c ->
             val cid = c.id.id
             api.getCustomerUsers(cid).data.map { u ->
