@@ -11,11 +11,12 @@ package com.demo.kotlindemo.data.api
 object AppConfig {
 
     // ---------- 服务端地址 ----------
-    // 本机 8080 被 WSL/代理劫持（外部入站返回 400 HTML 而非 TB，10.0.2.2 与宿主局域网 IP 都不稳）。
-    // 用 127.0.0.1 + adb reverse（模拟器 localhost → 宿主 127.0.0.1），经 adb 隧道直达 docker TB/task-service，绕开劫持。
-    // 重启模拟器后需重设：adb reverse tcp:8080 tcp:8080 ; adb reverse tcp:9300 tcp:9300
-    const val THINGSBOARD_BASE_URL = "http://127.0.0.1:8080/"
-    const val TASK_SERVICE_BASE_URL = "http://127.0.0.1:9300/"
+    // ★ 真机联调：手机与电脑同一 Wi-Fi 时，用电脑局域网 IP（如 192.168.50.140），手机才能连上后端。
+    //   （手机上的 127.0.0.1 指向手机自己，连不到电脑；模拟器才用 127.0.0.1 + adb reverse。）
+    // ★ 模拟器专用：若用 adb reverse（仅模拟器），改回 127.0.0.1 并执行
+    //   adb reverse tcp:8080 tcp:8080; adb reverse tcp:9300 tcp:9300
+    const val THINGSBOARD_BASE_URL = "http://192.168.50.140:8080/"
+    const val TASK_SERVICE_BASE_URL = "http://192.168.50.140:9300/"
 
     // ---------- 刷新与分页 ----------
     /** 页面自动刷新间隔（毫秒）：田块详情/总览每 10 秒轮询一次（需求文档 3.7） */

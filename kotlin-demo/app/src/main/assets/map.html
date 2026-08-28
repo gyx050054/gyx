@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <!-- 排障修复(2026-08-27)：页面为 file:// 来源，高德等瓦片服务带 Referer=file:// 会拒加载(防盗链) -->
+  <!-- 设置 no-referrer，瓦片请求不带 Referer，通常可绕过此类拦截 -->
+  <meta name="referrer" content="no-referrer">
+  <title>田块地图</title>
+  <link rel="stylesheet" href="leaflet.css">
+  <script src="leaflet.js"></script>
+  <style>
+    html, body, #map { height: 100%; margin: 0; }
+    .legend { position: absolute; z-index: 1000; bottom: 16px; left: 10px; background: #fff; padding: 6px 10px; border-radius: 6px; font: 12px/1.6 sans-serif; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="legend">
+    ● 田块中心 &nbsp;|&nbsp; <span style="color:#d32f2f">●</span> 电动阀 &nbsp;<span style="color:#1976d2">●</span> 温湿度 &nbsp;<span style="color:#388e3c">●</span> 墒情
+  </div>
+  <script>
+    // 排障：JS 全局异常记录（配合 WebView chrome://inspect 查看）
+    window.onerror = function (msg, src, line, col, err) {
+      try { console.error('[FieldMap] ' + msg + ' @' + (src||'') + ':' + line); } catch (e) {}
+      return false;
+    };
+    let map = null;
+    // 瓦片源列表（按优先级）：HTTPS 优先（正式环境），当前网络 HTTPS 被阻断时
+    // 自动降级到 HTTP；再失败则切换备用域名（webrd02/03/04），全部失败给出可见提示。
+    // 排障结论(2026-08-27)：白屏根因=当前网络 HTTPS 不通但 HTTP 通，
+    // 瓦片请求全部失败 -> 只有空背景。此处做多源降级解决。
+    const TILE_SOURCES = [
+      // 高德（国内直连）HTTPS 优先
+      'https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}',
+      'https://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}',
+      // HTTP 降级（HTTPS 被墙/阻断的网络环境）
+      'http://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}',
+      'http://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}',
+      // OSM 官方（国外网络）
+      'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+    ];
+    // 当前瓦片源下标（从 0 开始，瓦片连续失败累计达到阈值时切换下一个源）
+    let tileSourceIdx = 0;
+    let tileFailCount = 0;
+    let tileSuccessCount = 0;
+    // 小地图可视区通常只有 2~4 张瓦片：阈值设 2（2 张失败基本=该源整体不可用），
+    // 避免"永远达不到 8 张所以永不降级"的白屏 bug（2026-08-27 实测根因之一）。
+    const TILE_FAIL_SWITCH_THRESHOLD = 2;
+    // 超时兜底：5 秒内一张瓦片都没成功加载，强制切下一源（网络慢/挂起场景）
+    const TILE_TIMEOUT_MS = 5000;
+    let tileTimeoutHandle = null;
+    let tileLayer = null;
+
+    function loadTileSource() {
+      if (tileLayer) { map.removeLayer(tileLayer); tileLayer = null; }
+      if (tileTimeoutHandle) { clearTimeout(tileTimeoutHandle); tileTimeoutHandle = null; }
+      if (tileSourceIdx >= TILE_SOURCES.length) {
+        // 所有源都失败：显示可见提示，不再白屏
+        showTileFailHint();
+        return;
+      }
+      const url = TILE_SOURCES[tileSourceIdx];
+      console.log('[FieldMap] 尝试瓦片源 #' + tileSourceIdx + ' ' + url.substring(0, 60));
+      tileLayer = L.tileLayer(url, { maxZoom: 19, attribution: '&copy; 地图服务' }).addTo(map);
+      tileLayer.on('tileerror', function (err) {
+        tileFailCount++;
+        console.error('[FieldMap] 瓦片失败#' + tileSourceIdx + ' 累计' + tileFailCount + ' ' + (err && err.tile ? err.tile.src.substring(0, 80) : ''));
+        if (tileFailCount >= TILE_FAIL_SWITCH_THRESHOLD) {
+          console.error('[FieldMap] 瓦片源 ' + tileSourceIdx + ' 失败达阈值，切换下一源');
+          tileFailCount = 0;
+          tileSuccessCount = 0;
+          tileSourceIdx++;
+          loadTileSource();
+        }
+      });
+      tileLayer.on('load', function () {
+        // 有瓦片成功加载：重置失败计数并清超时
+        tileSuccessCount++;
+        tileFailCount = 0;
+        if (tileTimeoutHandle) { clearTimeout(tileTimeoutHandle); tileTimeoutHandle = null; }
+      });
+      // 超时兜底：5 秒无成功瓦片 → 切下一源
+      tileTimeoutHandle = setTimeout(function () {
+        if (tileSuccessCount === 0 && tileSourceIdx < TILE_SOURCES.length - 1) {
+          console.error('[FieldMap] 瓦片源 ' + tileSourceIdx + ' 5秒无成功，超时切下一源');
+          tileFailCount = 0;
+          tileSourceIdx++;
+          loadTileSource();
+        } else if (tileSuccessCount === 0) {
+          showTileFailHint();
+        }
+      }, TILE_TIMEOUT_MS);
+    }
+
+    function showTileFailHint() {
+      var el = document.getElementById('tile-fail-hint');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'tile-fail-hint';
+        el.style.cssText = 'position:absolute;z-index:2000;top:50%;left:50%;transform:translate(-50%,-50%);' +
+          'background:rgba(255,255,255,.95);padding:14px 20px;border-radius:10px;' +
+          'box-shadow:0 2px 10px rgba(0,0,0,.25);font:14px/1.6 sans-serif;text-align:center;color:#555;';
+        document.body.appendChild(el);
+      }
+      el.innerHTML = '⚠️ 底图瓦片加载失败（网络受限）<br>田块/设备点位仍显示，可正常操作';
+    }
+
+    function renderField(name, centerLat, centerLon, devicesJson) {
+      let devices = [];
+      try { devices = JSON.parse(devicesJson || '[]'); } catch (e) { devices = []; }
+      if (map) { map.remove(); map = null; }
+      const center = (centerLat && centerLon) ? [centerLat, centerLon] : [28.19, 112.93];
+      map = L.map('map').setView(center, 16);
+      // 底图：多源降级加载（见 TILE_SOURCES）
+      tileSourceIdx = 0;
+      tileFailCount = 0;
+      tileSuccessCount = 0;
+      loadTileSource();
+      // 田块区块示意（以中心点画一个半透明圆，代表田块范围）
+      L.circle(center, { radius: 120, color: '#7cb342', fillColor: '#8bc34a', fillOpacity: 0.15, weight: 2 }).addTo(map);
+      L.marker(center).addTo(map)
+        .bindPopup('<b>' + name + '</b><br>田块中心');
+      // 设备点位
+      devices.forEach(function (d) {
+        const color = d.type === 'VALVE' ? '#d32f2f' : (d.type === 'SOIL_DEVICE' ? '#388e3c' : '#1976d2');
+        const on = d.on ? '工作中' : '未工作';
+        const icon = L.divIcon({
+          html: '<div style="width:16px;height:16px;background:' + color + ';border-radius:50%;border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,.4)"></div>',
+          className: ''
+        });
+        L.marker([d.lat, d.lon], { icon: icon }).addTo(map)
+          .bindPopup('<b>' + d.name + '</b><br>类型：' + labelOf(d.type) + '<br>状态：' + on)
+          .on('click', function () {
+            try { window.JSBridge.onDeviceClick(d.name); } catch (e) {}
+          });
+      });
+    }
+    function labelOf(type) {
+      if (type === 'VALVE') return '电动阀';
+      if (type === 'SOIL_DEVICE') return '土壤墒情';
+      return '温湿度计';
+    }
+    // 排障修复(2026-08-27)：解决 "renderField is not defined" 竞态。
+    // App 可能在地图页 JS 未就绪时就注入坐标。这里改成"变量注入 + 本地轮询"：
+    // App 只需设置 window.__inject = {name, lat, lon, devices}，本脚本检测到即渲染。
+    // 若 App 直接调 renderField 失败(函数未定义)，也在此重试兜底。彻底消除白屏竞态。
+    function takeInject() {
+      var inj = window.__inject;
+      return inj ? { name: inj.name, lat: inj.lat, lon: inj.lon, devices: inj.devices } : null;
+    }
+    (function pumpInject() {
+      try {
+        if (typeof renderField === 'function') {
+          var inj = takeInject();
+          if (inj) { window.__inject = null; renderField(inj.name, inj.lat, inj.lon, inj.devices); }
+        }
+      } catch (e) { try { console.error('[FieldMap] pump ' + e); } catch (e2) {} }
+      setTimeout(pumpInject, 200);
+    })();
+  </script>
+</body>
+</html>

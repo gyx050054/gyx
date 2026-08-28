@@ -65,7 +65,7 @@ fun ServiceTask.toTimingTask(): TimingTask {
         endTime = endTime,
         action = action,
         status = status,
-        repeatMode = repeatMode,
+        repeatMode = repeatMode ?: "ONCE",
         dailyHour = dailyHour,
         durationMinutes = durationMinutes
     )

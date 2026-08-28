@@ -113,7 +113,14 @@ fun FieldDetailScreen(
                     }
                 },
                 actions = {  // 地图/列表切换（第三代第一版 §6）
-                    TextButton(onClick = { mapMode = !mapMode }) {
+                    // 排障修复(2026-08-27)：原 TextButton 可点热区过小，真机上极难点中(差几像素即触发不了)。
+                    // 改为 MinInteractiveComponentSize + 内边距，扩大可点区域，整块都能点。
+                    androidx.compose.material3.TextButton(
+                        onClick = { mapMode = !mapMode },
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
                         Text(if (mapMode) "📋 列表" else "🗺️ 地图")
                     }
                 },

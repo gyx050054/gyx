@@ -140,7 +140,7 @@ data class ServiceTask(
     val endTime: Long = 0L,
     val action: String = "on",
     val status: String = "PENDING",
-    val repeatMode: String = "ONCE",      // ONCE / DAILY（第三天第一版 §2）
+    val repeatMode: String? = null,       // +旧历史任务可能为 null（Gson 反序列化时保持 null，转 model 时兜底 ONCE）
     val dailyHour: Int? = null,           // DAILY 每天开始小时
     val durationMinutes: Int? = null      // DAILY 持续时长（分钟）
 )

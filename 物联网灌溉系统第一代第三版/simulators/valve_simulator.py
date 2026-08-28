@@ -23,10 +23,20 @@ class ValveSimulator(DeviceBase):
     # 电动阀可操作：订阅 RPC 下行主题（文档 3.5.3）
     SUPPORTS_RPC = True
 
+    # 固定电量白名单：命中的设备电量固定为指定值，不再随机初始化和衰减。
+    # key —— device accessToken；value —— 固定的 batteryLevel(%)。
+    # （用途：演示/联调时把特定阀门电量钉在某个值，如田地1的两台阀固定 30%。）
+    FIXED_BATTERY = {
+        "g2rg3Ii6ZiZloVuVHCzD": 30,   # 田地1-灌溉阀门A
+        "l8WKqmKSRqsXA57UoH2B": 30,   # 田地1-灌溉阀门B
+    }
+
     def __init__(self, token, host, port, keepalive=config.KEEPALIVE):
         super().__init__(token, host, port, keepalive)
         self.is_on = False          # 阀门是否开启
-        self.battery = random.randint(70, 100)
+        # 电量：命中固定电量白名单则钉死该值；否则随机初始化（70-100）
+        self.battery = self.FIXED_BATTERY.get(token, random.randint(70, 100))
+        self.fixed_battery = token in self.FIXED_BATTERY  # 是否固定电量（fixed 时不衰减）
         self.fault = False          # 是否故障
         self.instant_flow = 0.0     # 瞬时流量 L/min
         self.total_usage = random.uniform(1.0, 20.0)  # 累计用水量 m³
@@ -88,7 +98,10 @@ class ValveSimulator(DeviceBase):
             # 未工作状态：只报故障标记（文档 3.3.1）
             data["faultStatus"] = self.fault
         # 电量缓慢下降（5% 概率 -1，模拟长时间运行电量耗尽）
-        if random.random() < 0.05 and self.battery > 10:
+        # 固定电量白名单内的设备电量钉死，不参与衰减
+        if self.fixed_battery:
+            self.battery = self.FIXED_BATTERY[self.token]
+        elif random.random() < 0.05 and self.battery > 10:
             self.battery -= 1
         self.publish(data)
 
