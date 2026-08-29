@@ -1,6 +1,8 @@
 package com.irrigation.task.service;
 
+import com.irrigation.task.entity.TenantCredential;
 import com.irrigation.task.entity.UserPwdFlag;
+import com.irrigation.task.repository.TenantCredentialRepository;
 import com.irrigation.task.repository.UserPwdFlagRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,10 +37,13 @@ public class AuthService {
 
     private final ThingsBoardAdminClient adminClient;
     private final UserPwdFlagRepository pwdFlagRepository;
+    private final TenantCredentialRepository tenantCredentialRepository;
 
-    public AuthService(ThingsBoardAdminClient adminClient, UserPwdFlagRepository pwdFlagRepository) {
+    public AuthService(ThingsBoardAdminClient adminClient, UserPwdFlagRepository pwdFlagRepository,
+                       TenantCredentialRepository tenantCredentialRepository) {
         this.adminClient = adminClient;
         this.pwdFlagRepository = pwdFlagRepository;
+        this.tenantCredentialRepository = tenantCredentialRepository;
     }
 
     /**
@@ -69,9 +74,23 @@ public class AuthService {
         // ③ 激活并设置默认密码
         adminClient.activateUser(userId, DEFAULT_PASSWORD);
 
+        // ③.5 登记租户 ThingsBoard 凭证（真多租户告警隔离：告警扫描要用该租户自己的账号）
+        saveTenantCredential(tenantId, email, DEFAULT_PASSWORD);
+
         // ④ 登记强制改密标记（注册→改密窗口期有撞库风险，改密流程立即触发）
         pwdFlagRepository.save(new UserPwdFlag(email, true));
         log.info("注册完成：{} 已登记强制改密", email);
+    }
+
+    /** 登记/更新租户 TB 凭证（真多租户隔离用） */
+    private void saveTenantCredential(String tenantId, String email, String password) {
+        TenantCredential cred = tenantCredentialRepository.findByTenantId(tenantId)
+                .orElseGet(() -> tenantCredentialRepository.findByEmail(email).orElse(new TenantCredential()));
+        cred.setTenantId(tenantId);
+        cred.setEmail(email);
+        cred.setPassword(password);
+        cred.setUpdatedAt(System.currentTimeMillis());
+        tenantCredentialRepository.save(cred);
     }
 
     /**

@@ -47,6 +47,7 @@ public class WeatherController {
         resp.put("weatherDesc", r.weatherDesc());
         resp.put("temperature", r.temperature());
         resp.put("precipitation", r.precipitation());
+        resp.put("city", r.city() == null ? "未知" : r.city());  // 需求4：田块所在城市
         if (r.precipProb1h() != null) {
             resp.put("precipProb1h", r.precipProb1h());
         } else {

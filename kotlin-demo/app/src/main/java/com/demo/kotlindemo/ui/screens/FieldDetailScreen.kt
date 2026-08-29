@@ -90,8 +90,8 @@ fun FieldDetailScreen(
     var showTimeDialog by remember { mutableStateOf<Device?>(null) }
     // 挂载自由设备弹窗：true=显示（第二版：田块详情挂自由设备）
     var showMountDevicesDialog by remember { mutableStateOf(false) }
-    // 田块地图模式：true=顶部显示 Leaflet 地图（第三代第一版 §6）
-    var mapMode by remember { mutableStateOf(false) }
+    // 田块地图模式：true=顶部显示地图（需求3：默认直接显示，进详情即看到地图）
+    var mapMode by remember { mutableStateOf(true) }
 
     // 每 10 秒自动刷新设备状态（文档 3.7）：
     // 进入详情页先按田块加载设备（relations → 遥测），之后轮询该田块设备

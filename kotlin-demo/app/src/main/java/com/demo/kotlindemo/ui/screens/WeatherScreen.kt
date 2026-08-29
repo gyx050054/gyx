@@ -107,10 +107,14 @@ fun WeatherContent() {
                     )
                 }
             } else {
-                // 主天气卡：描述 + 气温
+                // 主天气卡：城市 + 描述 + 气温（需求4：显示田块所在城市）
                 Card(Modifier.fillMaxWidth()) {
                     Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(w.weatherDesc, style = MaterialTheme.typography.displaySmall)
+                        Column(Modifier.weight(1f)) {
+                            Text(w.city, style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                            Spacer(Modifier.height(4.dp))
+                            Text(w.weatherDesc, style = MaterialTheme.typography.displaySmall)
+                        }
                         Spacer(Modifier.width(16.dp))
                         Text(
                             if (w.temperature.isNaN()) "——" else "%.1f℃".format(w.temperature),

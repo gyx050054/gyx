@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.irrigation.task.config.ThingsBoardProperties;
+import com.irrigation.task.entity.TenantCredential;
+import com.irrigation.task.repository.TenantCredentialRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -16,6 +18,8 @@ import org.springframework.web.client.RestClient;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * ThingsBoard REST 客户端（设备网关实现）
@@ -43,18 +47,73 @@ public class ThingsBoardClient {
     private final ThingsBoardProperties props;
     private final RestClient rest;
     private final ObjectMapper mapper = new ObjectMapper();
+    private final TenantCredentialRepository tenantCredentialRepository;
 
     /** 缓存的有效 token 与过期时刻（volatile：多线程可见性） */
     private volatile String token;
     private volatile long tokenExpireAt; // 毫秒时间戳
 
-    public ThingsBoardClient(ThingsBoardProperties props) {
+    /** 按租户维护的独立 token 缓存（真多租户隔离：每租户用自己的 TB 账号登录） */
+    private final Map<String, String> tenantTokens = new ConcurrentHashMap<>();
+    private final Map<String, Long> tenantTokenExpireAt = new ConcurrentHashMap<>();
+
+    public ThingsBoardClient(ThingsBoardProperties props, TenantCredentialRepository tenantCredentialRepository) {
         this.props = props;
+        this.tenantCredentialRepository = tenantCredentialRepository;
         // 连接/读取超时统一从配置读取（原 rpcTimeoutMs 配置为死配置，此处让其真正生效）
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout((int) props.getRpcTimeoutMs());
         factory.setReadTimeout((int) props.getRpcTimeoutMs());
         this.rest = RestClient.builder().requestFactory(factory).build();
+    }
+
+    /**
+     * 获取指定租户的有效 token（线程安全）。
+     * 优先用该租户自己的 TB 凭证登录（真多租户隔离）；若该租户无凭证则回退到全局默认账号。
+     */
+    public synchronized String getTokenForTenant(String tenantId) {
+        if (tenantId == null || tenantId.isBlank()) {
+            return getToken();
+        }
+        long expireAt = tenantTokenExpireAt.getOrDefault(tenantId, 0L);
+        String cached = tenantTokens.get(tenantId);
+        if (cached == null || expireAt - TOKEN_REFRESH_MARGIN_MS < Instant.now().toEpochMilli()) {
+            loginAsTenant(tenantId);
+        }
+        return tenantTokens.get(tenantId);
+    }
+
+    /** 以指定租户的 TB 账号登录并缓存其 token（凭证来自 tenant_credentials 表） */
+    private void loginAsTenant(String tenantId) {
+        try {
+            TenantCredential cred = tenantCredentialRepository.findByTenantId(tenantId)
+                    .orElse(null);
+            if (cred == null) {
+                // 该租户未登记凭证：回退到全局默认账号（兼容已有演示数据）
+                String g = getToken();
+                tenantTokens.put(tenantId, g);
+                tenantTokenExpireAt.put(tenantId, tokenExpireAt);
+                return;
+            }
+            ObjectNode body = mapper.createObjectNode();
+            body.put("username", cred.getEmail());
+            body.put("password", cred.getPassword());
+            ResponseEntity<JsonNode> resp = postJson(props.getBaseUrl() + "/api/auth/login", null, body, JsonNode.class);
+            JsonNode data = resp.getBody();
+            if (data == null || !data.has("token")) {
+                throw new IllegalStateException("租户 " + tenantId + " 登录响应缺少 token");
+            }
+            String t = data.get("token").asText();
+            long expAt = Instant.now().toEpochMilli() + TOKEN_TTL_MS;
+            tenantTokens.put(tenantId, t);
+            tenantTokenExpireAt.put(tenantId, expAt);
+            log.info("ThingsBoard 租户 {} 登录成功，token 已缓存", cred.getEmail());
+        } catch (Exception e) {
+            log.warn("租户 {} 登录失败，回退全局账号: {}", tenantId, e.getMessage());
+            String g = getToken();
+            tenantTokens.put(tenantId, g);
+            tenantTokenExpireAt.put(tenantId, tokenExpireAt);
+        }
     }
 
     /**
@@ -187,16 +246,27 @@ public class ThingsBoardClient {
      * @return 设备列表（id/name/type）
      */
     public List<DeviceBrief> listDevicesByType(String deviceType) {
+        return listDevicesByType(deviceType, null);
+    }
+
+    /**
+     * 按设备类型分页拉取指定租户下设备（真多租户隔离：用该租户自己的 TB token）
+     * @param deviceType TB 的设备 Profile 类型名；null=全部
+     * @param tenantId   租户 ID；null=用全局默认账号
+     * @return 设备列表（id/name/type）
+     */
+    public List<DeviceBrief> listDevicesByType(String deviceType, String tenantId) {
         List<DeviceBrief> result = new ArrayList<>();
         int page = 0;
         int pageSize = 100;
+        String authToken = (tenantId == null || tenantId.isBlank()) ? getToken() : getTokenForTenant(tenantId);
         while (true) {
             String q = "pageSize=" + pageSize + "&page=" + page + "&sortProperty=name&sortOrder=ASC";
             if (deviceType != null && !deviceType.isBlank()) {
                 q += "&type=" + deviceType;
             }
             ResponseEntity<JsonNode> resp = getJson(
-                    props.getBaseUrl() + "/api/tenant/deviceInfos?" + q, getToken(), JsonNode.class);
+                    props.getBaseUrl() + "/api/tenant/deviceInfos?" + q, authToken, JsonNode.class);
             JsonNode body = resp.getBody();
             if (body == null) {
                 break;
@@ -227,11 +297,23 @@ public class ThingsBoardClient {
      * @return 最新值字符串；无数据返回 null
      */
     public String latestTelemetry(String deviceId, String key) {
+        return latestTelemetry(deviceId, key, null);
+    }
+
+    /**
+     * 查询某设备某遥测键的最新值（指定租户 token）
+     * @param deviceId ThingsBoard 设备 ID
+     * @param key      遥测键名
+     * @param tenantId 租户 ID；null=用全局默认账号
+     * @return 最新值字符串；无数据返回 null
+     */
+    public String latestTelemetry(String deviceId, String key, String tenantId) {
         try {
+            String authToken = (tenantId == null || tenantId.isBlank()) ? getToken() : getTokenForTenant(tenantId);
             ResponseEntity<JsonNode> resp = getJson(
                     props.getBaseUrl() + "/api/plugins/telemetry/DEVICE/" + deviceId
                             + "/values/timeseries?keys=" + key,
-                    getToken(), JsonNode.class);
+                    authToken, JsonNode.class);
             JsonNode node = resp.getBody();
             if (node == null || node.isNull()) {
                 return null;

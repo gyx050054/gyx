@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 // 导入网格的 items 扩展函数
 import androidx.compose.foundation.lazy.grid.items
 // 导入懒加载列（列表）
+import androidx.compose.foundation.lazy.LazyColumn
 // 导入列表的 items 扩展函数
 import androidx.compose.foundation.lazy.items
 // 导入圆角形状
@@ -33,6 +34,7 @@ import androidx.compose.runtime.*
 // 导入对齐方式
 // 导入修饰符
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 // 导入绘制裁剪
 // 导入边框（选中田块高亮用）
 // 导入颜色类
@@ -46,6 +48,11 @@ import androidx.compose.ui.unit.dp
 import com.demo.kotlindemo.data.model.Device
 import com.demo.kotlindemo.data.model.DeviceType
 import com.demo.kotlindemo.data.model.isSensor
+// 需求3：消息Tab展示告警，需导入告警 DTO
+import com.demo.kotlindemo.data.dto.AlarmRecordDto
+import com.demo.kotlindemo.util.TimeFormats
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
 // 导入「我的」页与用户 ViewModel（第二版）
 import com.demo.kotlindemo.ui.screens.MineScreen
 import com.demo.kotlindemo.viewmodel.UserViewModel
@@ -77,10 +84,11 @@ import kotlinx.coroutines.delay
  */
 // 定义 tab 类型
 private enum class MainTab {
-    FIELDS,  // 区块 tab
-    DEVICES, // 设备 tab
-    WEATHER, // 天气 tab（第三代第一版 §4.3）
-    MINE     // 我的 tab（第二版新增：身份/退出/使用者管理）
+    FIELDS,   // 区块 tab
+    DEVICES,  // 设备 tab
+    WEATHER,  // 天气 tab（第三代第一版 §4.3）
+    MESSAGES, // 消息 tab（需求3：告警放这里）
+    MINE      // 我的 tab（第二版新增：身份/退出/使用者管理）
 }
 
 /**
@@ -106,7 +114,8 @@ fun MainScreen(
     onDeviceHistoryClick: (String, String, String) -> Unit,  // 点击传感器查看历史（deviceId, name, type）
     onUserManageClick: () -> Unit,    // 使用者管理入口（第二版）
     alarmViewModel: AlarmViewModel,   // 告警 ViewModel（第四版：顶栏红点）
-    onAlarmClick: () -> Unit          // 点击告警铃铛回调
+    onAlarmClick: () -> Unit,         // 点击告警铃铛回调
+    onManageRules: () -> Unit         // 进入告警规则管理（需求3：消息Tab内）
 ) {
     // ── 当前选中的 tab ──
     // remember 记住当前选中的 tab，默认是区块
@@ -168,6 +177,7 @@ fun MainScreen(
                             MainTab.FIELDS -> "🌾 田块总览"
                             MainTab.WEATHER -> "🌤 天气"
                             MainTab.DEVICES -> "📡 所有设备信息"
+                            MainTab.MESSAGES -> "🔔 消息"
                             MainTab.MINE -> "我的"
                         },
                         fontWeight = FontWeight.SemiBold
@@ -284,6 +294,23 @@ fun MainScreen(
                     icon = { Icon(Icons.Default.WbSunny, contentDescription = null) },
                     label = { Text("天气") }
                 )
+                // 消息 tab 按钮（需求3：告警消息放这里，带红点）
+                NavigationBarItem(
+                    selected = currentTab == MainTab.MESSAGES,
+                    onClick = { currentTab = MainTab.MESSAGES },
+                    icon = {
+                        BadgedBox(
+                            badge = {
+                                if (alarmViewModel.unreadCount > 0) {
+                                    Badge { Text(if (alarmViewModel.unreadCount > 99) "99+" else alarmViewModel.unreadCount.toString()) }
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.Notifications, contentDescription = null)
+                        }
+                    },
+                    label = { Text("消息") }
+                )
                 // 我的 tab 按钮（第二版新增）
                 NavigationBarItem(
                     selected = currentTab == MainTab.MINE,   // 是否选中
@@ -341,6 +368,11 @@ fun MainScreen(
                 )
                 // 天气 tab（第三代第一版 §4.3）
                 MainTab.WEATHER -> WeatherContent()
+                // 消息 tab（需求3：告警放这里，替代单独告警页）
+                MainTab.MESSAGES -> MessageTabContent(
+                    alarmViewModel = alarmViewModel,
+                    onManageRules = onManageRules
+                )
                 // 我的 tab（第二版新增）：身份/使用者管理/退出
                 MainTab.MINE -> MineScreen(
                     userViewModel = userViewModel,
@@ -598,6 +630,99 @@ fun MainScreen(
                 TextButton(onClick = { devOpMessage = null }) { Text("知道了") }
             }
         ) { Text(msg) }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// 消息 Tab（需求3：告警消息集中展示，替代单独告警页）
+// ═══════════════════════════════════════════════════════════
+@Composable
+fun MessageTabContent(
+    alarmViewModel: AlarmViewModel,
+    onManageRules: () -> Unit
+) {
+    // 进入 Tab 时加载告警（含未确认红点）
+    LaunchedEffect(Unit) {
+        alarmViewModel.loadAlarms()
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        // 顶部工具条：刷新 + 规则管理（管理员可见）
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "未确认 ${alarmViewModel.unreadCount} 条",
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            TextButton(onClick = { alarmViewModel.loadAlarms() }) { Text("🔄 刷新") }
+            if (alarmViewModel.isAdmin) {
+                TextButton(onClick = onManageRules) { Text("⚙️ 规则") }
+            }
+        }
+
+        val alarms = alarmViewModel.alarms
+        if (alarms.isEmpty()) {
+            Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                Text("暂无告警消息", style = MaterialTheme.typography.bodyLarge)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(alarms, key = { it.id }) { alarm ->
+                    MessageAlarmCard(alarm, onAck = { alarmViewModel.ack(alarm.id) })
+                }
+            }
+        }
+    }
+}
+
+/** 消息Tab内的告警卡片：级别色标 + 消息 + 设备 + 时间 + 确认 */
+@Composable
+private fun MessageAlarmCard(alarm: AlarmRecordDto, onAck: () -> Unit) {
+    val color = when (alarm.severity.uppercase()) {
+        "HIGH" -> Color(0xFFD32F2F)
+        "MEDIUM" -> Color(0xFFFF9800)
+        else -> Color(0xFFFFEB3B)
+    }
+    val statusText = when (alarm.status) {
+        "RESOLVED" -> "已恢复"
+        "ACKNOWLEDGED" -> "已确认"
+        else -> "未确认"
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(10.dp).background(color))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "【${alarm.severity}】 $statusText",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(alarm.message, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "${alarm.deviceName} · ${TimeFormats.DATETIME.format(java.util.Date(alarm.firstAt))}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (alarm.status == "ACTIVE") {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = onAck, modifier = Modifier.fillMaxWidth()) {
+                    Text("确认")
+                }
+            }
+        }
     }
 }
 

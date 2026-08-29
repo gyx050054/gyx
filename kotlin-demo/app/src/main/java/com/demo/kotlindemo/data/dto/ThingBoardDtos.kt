@@ -208,12 +208,13 @@ data class UnreadCountResponse(
     val count: Long = 0L
 )
 
-// 天气响应：{success, message, weatherDesc, temperature, precipitation, precipProb1h}
+// 天气响应：{success, message, weatherDesc, temperature, precipitation, precipProb1h, city}
 data class WeatherDto(
     val success: Boolean = true,
     val message: String = "",
     val weatherDesc: String = "——",
     val temperature: Double = Double.NaN,
     val precipitation: Double = 0.0,
-    val precipProb1h: Int? = null
+    val precipProb1h: Int? = null,
+    val city: String = "未知"   // 需求4：田块所在城市
 )

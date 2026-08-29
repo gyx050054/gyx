@@ -45,9 +45,10 @@ public class WeatherService {
     private final java.util.Map<String, long[]> cacheTs = new java.util.concurrent.ConcurrentHashMap<>();
     private final java.util.Map<String, WeatherResult> cacheData = new java.util.concurrent.ConcurrentHashMap<>();
 
-    /** 天气结果（对外 DTO） */
+    /** 天气结果（对外 DTO，新增 city：田块/坐标所属城市名，需求4） */
     public record WeatherResult(String weatherDesc, double temperature,
-                                double precipitation, Integer precipProb1h) {}
+                                double precipitation, Integer precipProb1h,
+                                String city) {}
 
     /**
      * 获取天气。命中缓存直接返回；未命中/过期则调 Open-Meteo。
@@ -68,7 +69,7 @@ public class WeatherService {
                     .uri(OPEN_METEO_URL, lat, lon)
                     .retrieve()
                     .body(String.class);
-            WeatherResult result = parse(body);
+            WeatherResult result = parse(body, resolveCity(lat, lon));  // 需求4：附带城市名
             if (result != null) {
                 cacheTs.put(key, new long[]{now});
                 cacheData.put(key, result);
@@ -80,8 +81,39 @@ public class WeatherService {
         }
     }
 
-    /** 解析 Open-Meteo 响应为内部结果（含 WMO 天气码映射与未来1小时降雨概率） */
-    private WeatherResult parse(String body) {
+    /**
+     * 逆地理编码：坐标 → 城市名（需求4：天气显示田块所在城市）。
+     * 用 BigDataCloud 免费 API（无 key），失败返回"未知"。
+     */
+    private String resolveCity(String lat, String lon) {
+        try {
+            if (lat == null || lon == null || lat.isBlank() || lon.isBlank()
+                    || "0".equals(lat.trim()) || "0".equals(lon.trim())) {
+                return "未知";
+            }
+            String url = "https://api.bigdatacloud.net/data/reverse-geocode-client"
+                    + "?latitude=" + lat.trim() + "&longitude=" + lon.trim()
+                    + "&localityLanguage=zh";
+            JsonNode node = rest.get().uri(url).retrieve().body(JsonNode.class);
+            if (node == null) {
+                return "未知";
+            }
+            String city = node.path("city").asText(null);
+            if (city == null || city.isBlank()) {
+                city = node.path("locality").asText(null);
+            }
+            if (city == null || city.isBlank()) {
+                city = node.path("principalSubdivision").asText(null);
+            }
+            return (city == null || city.isBlank()) ? "未知" : city;
+        } catch (Exception e) {
+            log.warn("城市反查失败 lat={} lon={}: {}", lat, lon, e.getMessage());
+            return "未知";
+        }
+    }
+
+    /** 解析 Open-Meteo 响应为内部结果（含 WMO 天气码映射与未来1小时降雨概率；city 为逆地理城市名） */
+    private WeatherResult parse(String body, String city) {
         try {
             JsonNode root = mapper.readTree(body);
             JsonNode current = root.path("current");
@@ -97,7 +129,7 @@ public class WeatherService {
             }
 
             return new WeatherResult(weatherDesc(weatherCode),
-                    temperature, precipitation, precipProb1h);
+                    temperature, precipitation, precipProb1h, city);
         } catch (Exception e) {
             log.warn("天气响应解析失败：{}", e.getMessage());
             return null;

@@ -199,6 +199,9 @@ fun AppNavGraph(navController: NavHostController) {
                 alarmViewModel = alarmViewModel, // 告警 ViewModel（第四版）
                 onAlarmClick = {                 // 点击告警铃铛
                     navController.navigate(Routes.ALARMS)
+                },
+                onManageRules = {                // 需求3：消息Tab进规则管理
+                    navController.navigate(Routes.ALARM_RULES)
                 }
             )
         }

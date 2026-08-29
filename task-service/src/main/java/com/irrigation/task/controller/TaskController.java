@@ -77,6 +77,7 @@ public class TaskController {
                 return ResponseEntity.badRequest().body(error("参数非法：deviceId/startTime/endTime 必填，endTime 需大于 startTime"));
             }
         }
+
         Task t = taskService.createTask(deviceId, deviceName, start, end, action, tenantId,
                 repeatMode, dailyHour, durationMinutes);
         if (t == null) {

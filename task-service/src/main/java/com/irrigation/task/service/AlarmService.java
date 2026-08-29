@@ -10,7 +10,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -99,8 +102,14 @@ public class AlarmService {
 
     // ---------- 告警记录 ----------
 
-    /** 按租户查告警记录，可选按状态过滤（App 告警列表） */
+    /**
+     * 按租户查告警记录，可选按状态过滤（App 告警列表）。
+     * 严格租户隔离：tenantId 为空时返回空列表（杜绝"空租户告警互相暴露"的权限 bug）。
+     */
     public List<AlarmRecord> listRecords(String tenantId, AlarmRecord.Status status) {
+        if (tenantId == null || tenantId.isBlank()) {
+            return List.of();
+        }
         if (status != null) {
             return recordRepository.findByTenantIdAndStatusOrderByFirstAtDesc(tenantId, status);
         }
@@ -119,36 +128,59 @@ public class AlarmService {
         }).orElse(false);
     }
 
-    /** 未确认告警计数（App 顶栏红点：ACTIVE 未确认数） */
+    /** 未确认告警计数（App 顶栏红点：ACTIVE 未确认数）；tenantId 为空返回 0（隔离） */
     public long unreadCount(String tenantId) {
+        if (tenantId == null || tenantId.isBlank()) {
+            return 0L;
+        }
         return recordRepository.countByTenantIdAndStatus(tenantId, AlarmRecord.Status.ACTIVE);
     }
 
     // ---------- 扫描评估（每 30 秒） ----------
 
     /**
-     * 扫描全部启用规则，评估每台目标设备的实时遥测。
-     * 命中 → 不存在未恢复记录则新建 ACTIVE，已存在（ACTIVE/ACKNOWLEDGED）则刷新 lastAt；
-     * 未命中 → 已存在未恢复记录则置 RESOLVED（自动恢复）。
+     * 扫描全部启用规则，评估每台目标设备的实时遥测（真多租户隔离，第五版）。
+     *
+     * 关键改动：不再用全局单一账号扫描所有规则（会导致租户间告警串数据）。
+     * 改为「按规则所属租户」分组遍历：每个租户用其自己的 TB 账号查设备、比对遥测，
+     * 并按该租户生成/恢复告警记录 —— 实现真正的租户隔离。
      */
     @Transactional
     public void scanAll() {
         List<AlarmRule> rules = ruleRepository.findByEnabledTrue();
-        for (AlarmRule rule : rules) {
-            scanRule(rule);
+        // 规则按 tenantId 分组：null 组（旧数据/未分租户）用全局默认账号
+        Map<String, List<AlarmRule>> byTenant = new LinkedHashMap<>();
+        for (AlarmRule r : rules) {
+            String tid = r.getTenantId() == null ? "" : r.getTenantId();
+            byTenant.computeIfAbsent(tid, k -> new ArrayList<>()).add(r);
+        }
+        for (Map.Entry<String, List<AlarmRule>> e : byTenant.entrySet()) {
+            String tenantId = e.getKey().isEmpty() ? null : e.getKey();
+            for (AlarmRule rule : e.getValue()) {
+                try {
+                    scanRule(rule, tenantId);
+                } catch (Exception ex) {
+                    log.warn("扫描规则 {} 失败（租户 {}）: {}", rule.getId(), tenantId, ex.getMessage());
+                }
+            }
         }
     }
 
-    private void scanRule(AlarmRule rule) {
+    /**
+     * 评估单个规则（指定租户）。
+     * 用该租户的 token 查询其设备、比对遥测，生成告警时写对 tenantId。
+     */
+    private void scanRule(AlarmRule rule, String tenantId) {
         List<ThingsBoardClient.DeviceBrief> devices = tbClient.listDevicesByType(
                 rule.getDeviceType() == null || rule.getDeviceType().isBlank() || "ALL".equalsIgnoreCase(rule.getDeviceType())
-                        ? null : rule.getDeviceType());
+                        ? null : rule.getDeviceType(),
+                tenantId);
         for (ThingsBoardClient.DeviceBrief dev : devices) {
-            boolean hit = evalRule(rule, dev.id());
+            boolean hit = evalRule(rule, dev.id(), tenantId);
             if (hit) {
-                activate(rule, dev);
+                activate(rule, dev, tenantId);
             } else {
-                resolve(rule, dev.id());
+                resolve(rule, dev.id(), tenantId);
             }
         }
     }
@@ -158,10 +190,10 @@ public class AlarmService {
      * offline 指标：设备无最新遥测即视为断连命中（简化：latestTelemetry 返回 null）；
      * 普通遥测键：解析最新值与阈值比较。
      */
-    private boolean evalRule(AlarmRule rule, String deviceId) {
+    private boolean evalRule(AlarmRule rule, String deviceId, String tenantId) {
         String metric = rule.getMetric();
         boolean isOffline = "offline".equalsIgnoreCase(metric);
-        String raw = tbClient.latestTelemetry(deviceId, isOffline ? "temperature" : metric);
+        String raw = tbClient.latestTelemetry(deviceId, isOffline ? "temperature" : metric, tenantId);
         if (raw == null) {
             // 无遥测：对普通指标视为不命中（等设备上报）；对 offline 指标视为命中（断连）
             return isOffline;
@@ -182,8 +214,8 @@ public class AlarmService {
         }
     }
 
-    /** 命中：建/刷新告警记录 */
-    private void activate(AlarmRule rule, ThingsBoardClient.DeviceBrief dev) {
+    /** 命中：建/刷新告警记录（tenantId 用规则所属租户，确保隔离） */
+    private void activate(AlarmRule rule, ThingsBoardClient.DeviceBrief dev, String tenantId) {
         AlarmRecord target = null;
         Optional<AlarmRecord> exist = recordRepository.findFirstByRuleIdAndDeviceIdAndStatusIn(
                 rule.getId(), dev.id(),
@@ -193,7 +225,7 @@ public class AlarmService {
             target.setLastAt(Instant.now().toEpochMilli());
         } else {
             target = new AlarmRecord();
-            target.setTenantId(rule.getTenantId());
+            target.setTenantId(tenantId);
             target.setDeviceId(dev.id());
             target.setDeviceName(dev.name());
             target.setRuleId(rule.getId());
@@ -210,7 +242,7 @@ public class AlarmService {
     }
 
     /** 未命中：未恢复记录置 RESOLVED */
-    private void resolve(AlarmRule rule, String deviceId) {
+    private void resolve(AlarmRule rule, String deviceId, String tenantId) {
         Optional<AlarmRecord> exist = recordRepository.findFirstByRuleIdAndDeviceIdAndStatusIn(
                 rule.getId(), deviceId,
                 List.of(AlarmRecord.Status.ACTIVE, AlarmRecord.Status.ACKNOWLEDGED));
