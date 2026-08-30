@@ -1,3 +1,13 @@
+/**
+ * 【文件职责】NavGraph —— App 导航层。
+ *   - 集中管理全部路由常量（[Routes] 对象）与页面跳转关系（[AppNavGraph]），避免路由拼写错误；
+ *   - 定义登录 / 注册 / 改密 / 常见问题 / 使用者管理 / 主页 / 任务 / 田块详情 / 历史 / 告警 / 告警规则等页面的路由与跳转；
+ *   - 在 NavHost 中创建并共享 FarmViewModel / TaskViewModel / UserViewModel / AlarmViewModel，多个页面复用同一实例（保证状态一致）。
+ *
+ * 【数据流】startDestination = LOGIN 进入登录链路。登录成功且无需改密时，回调先 userViewModel.loadCurrentUser() + farmViewModel.loadFields()
+ *   刷新身份与田块，再 navigate(MAIN) 并清空返回栈（第三版：切换账号残留防御，确保显示当前登录者数据）；需要强制改密则先 navigate(change_password)，
+ *   改密成功回调同样先刷新身份与田块再进 MAIN。其余页面通过 popBackStack() 返回，或 navigate 到具体路由（田块详情/历史页携带路径参数）。
+ */
 // 声明包名，这个文件属于导航层
 package com.demo.kotlindemo.ui.navigation
 

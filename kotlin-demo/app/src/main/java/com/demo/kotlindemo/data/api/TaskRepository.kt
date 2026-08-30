@@ -1,3 +1,7 @@
+/**
+ * 【文件职责】微服务端任务仓库：封装定时任务调度服务（:9300）的全部调用——创建单个/批量任务、查询任务列表、删除（取消）任务、查询执行流水、天气查询等。
+ * 【数据流】任务页/调度页 ViewModel → TaskRepository → ApiClient.taskService（无认证 client）→ TaskServiceApi（@POST/@GET/@DELETE）→ HTTP → 响应 DTO（TaskCreateResponse / ServiceTask / TaskRunDto / WeatherDto / ServiceResponse）。
+ */
 // 声明包名：数据仓库层（任务域）
 package com.demo.kotlindemo.data.api
 
@@ -19,6 +23,7 @@ import com.demo.kotlindemo.data.dto.TaskRunDto
  */
 class TaskRepository {
 
+    /** 微服务端任务 API（无认证 client，与告警共用同一微服务端） */
     private val taskApi = ApiClient.taskService
 
     /** 创建定时任务（单个设备；action 默认 on=开启；第三版：带当前租户 tenantId；第三/四版：可指定每天 DAILY） */

@@ -1,3 +1,14 @@
+/**
+ * 【文件职责】
+ * 日期时间格式化工具：用线程安全的 java.time 实现统一封装格式化/解析能力，
+ * 集中定义 APP 各页面复用的格式器（完整日期时间、纯日期、纯时间、时分秒、月日时分），
+ * 消除各页面重复创建格式化器的问题，并替代旧 SimpleDateFormat。
+ *
+ * 【数据流】
+ * 输入：毫秒时间戳 Long 或 Date（TsFormatter.format），或用户输入的字符串（TsFormatter.parse）。
+ * 转换：DateTimeFormatter 按系统时区格式化/解析；parse 格式不符时返回 null（不抛异常）。
+ * 输出：UI 层展示用的字符串（任务设置、历史筛选、设备最近上报时间、曲线横轴等）。
+ */
 // 声明包名：工具层
 package com.demo.kotlindemo.util
 

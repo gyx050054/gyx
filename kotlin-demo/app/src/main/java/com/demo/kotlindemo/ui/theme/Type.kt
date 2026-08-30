@@ -1,3 +1,14 @@
+/**
+ * 【文件职责】
+ * 字体排版系统：用 Material3 的 Typography 定义 APP 的 5 级文本样式
+ * （display/headline/title/body/label）中各常用档位的字号、字重、行高与字间距，
+ * 未覆盖的样式走 Material3 默认值。
+ *
+ * 【数据流】
+ * 定义：在此统一声明 Typography，作为全局排版风格唯一来源。
+ * 消费：ui.theme.Theme 中 MaterialTheme(typography = Typography) 把排版向下传递，
+ *       页面中的 Text 经 MaterialTheme.typography.** 或 MaterialTheme.typography 间接取用。
+ */
 // =============================================================================
 // 📄 Type.kt
 // 作用：定义 App 的字体排版系统 — 字号、字重、行高等

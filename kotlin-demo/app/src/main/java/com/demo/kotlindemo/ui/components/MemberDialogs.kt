@@ -1,3 +1,21 @@
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * 【文件职责】
+ * 成员管理弹窗集合（从 UserManagementScreen.kt 拆分，成员域弹窗高内聚）：
+ *  - AddMemberDialog   ：新增成员弹窗（角色单选 + 归属选择 + 邮箱）
+ *  - AssignScopeDialog ：分配可见范围弹窗（勾选田块/设备，按家庭分配，成员共享）
+ *
+ * 【数据流】
+ * 两弹窗均为「内部表单状态 + 回调上抛」：
+ *  - AddMemberDialog：role/joinMode/familyName/joinFamilyId/email 为弹窗内部状态，
+ *    仅用于表单填写与校验（valid 决定「创建」能否点击）；点「创建」时把
+ *    (角色, 家庭id或null, 新家庭名, 邮箱) 组装后经 onConfirm 交给父层。
+ *  - AssignScopeDialog：checkedFields/checkedDevices 为勾选状态，点「确定分配」时把
+ *    选中的田块 ID 列表 + 设备 ID 列表经 onConfirm(田块ID, 设备ID) 交给父层，
+ *    由父层调用 TB 分配接口（按家庭分配，家庭内成员共享）。
+ *  两弹窗均为纯展示，onDismiss 仅用于关闭；设备列表仅取前 20 条（devices.take(20)）。
+ * ═══════════════════════════════════════════════════════════════
+ */
 // 包声明：成员管理弹窗（第三版重构：从 UserManagementScreen.kt 拆出，成员域弹窗高内聚）
 package com.demo.kotlindemo.ui.components
 
@@ -43,6 +61,7 @@ internal fun AddMemberDialog(
     // 归属方式：new=新建家庭 / join=加入已有家庭
     var joinMode by remember { mutableStateOf("new") }
     var familyName by remember { mutableStateOf("") }
+    // 默认选第一个已有家庭（若有）；无家庭时为 null（需先新建家庭）
     var joinFamilyId by remember { mutableStateOf<String?>(families.firstOrNull()?.id?.id) }
     var email by remember { mutableStateOf("") }
 

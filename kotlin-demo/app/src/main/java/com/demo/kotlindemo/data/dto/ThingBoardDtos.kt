@@ -1,3 +1,7 @@
+/**
+ * 【文件职责】ThingsBoard 与微服务端 REST API 的全部响应 DTO 数据模型（Gson 解析用）：涵盖认证、分页、设备/资产/配置、关系、遥测、任务、告警、天气等。
+ * 【数据流】Retrofit 接口返回 → Gson 序列化为 DTO（字段名用 @SerializedName 映射 TB 的嵌套对象/命名）→ Repository 读取 DTO → 模型转换 → UI。
+ */
 package com.demo.kotlindemo.data.dto
 
 // Gson 字段名映射（TB 响应 customerId/tenantId 为嵌套对象，需 @SerializedName 指定）

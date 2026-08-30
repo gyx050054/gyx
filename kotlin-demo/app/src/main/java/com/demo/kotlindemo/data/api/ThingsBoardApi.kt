@@ -1,3 +1,7 @@
+/**
+ * 【文件职责】ThingsBoard REST 接口定义：以 Retrofit 注解声明 TB 4.x 全部端点（认证、设备、资产/田块、关系、遥测、RPC、用户/客户管理），供 ThingsBoardRepository 调用。
+ * 【数据流】ThingsBoardRepository → ThingsBoardApi 方法（@GET/@POST/@DELETE + @Path/@Query/@Body）→ ApiClient.thingsboard（带 JWT 认证 client）→ HTTP 请求 → 响应 DTO（PageData/DeviceInfoDto/AssetInfoDto/TelemetryItem 等）。
+ */
 package com.demo.kotlindemo.data.api
 
 import com.demo.kotlindemo.data.dto.*

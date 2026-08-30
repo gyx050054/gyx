@@ -1,3 +1,14 @@
+/**
+ * 【文件职责】
+ * 定时任务数据模型层：定义任务状态枚举 TaskStatus 与定时任务数据类 TimingTask，
+ * 并承载微服务端任务 DTO → 本地定时任务模型的转换（ServiceTask.toTimingTask）。
+ *
+ * 【数据流】
+ * 上游：微服务端任务 DTO（ServiceTask），其中状态为字符串、重复模式可能为空。
+ * 转换：toTimingTask() 把任务 ID 加 "svc_" 前缀以与本地任务区分，将状态字符串映射为
+ *       TaskStatus 枚举，并为空值提供默认值（repeatMode 缺省 "ONCE"）。
+ * 下游：任务管理页与定时任务列表，按 status 展示状态、按 startTime/endTime 排序与展示。
+ */
 // 声明包名，这个文件是数据层模型
 package com.demo.kotlindemo.data.model
 

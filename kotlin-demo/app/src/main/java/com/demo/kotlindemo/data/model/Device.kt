@@ -1,3 +1,18 @@
+/**
+ * 【文件职责】
+ * 设备数据模型层：集中定义 APP 内的设备类型枚举与设备数据类，并承载两块核心转换逻辑——
+ * 1. DTO → 模型转换：DeviceInfoDto.toDevice() 做类型映射（TB 的 type → 本地 DeviceType，
+ *    未知类型按只读传感器处理）。
+ * 2. 遥测填充：Device.applyTelemetry() 按遥测键取最新值，用 copy() 生成新模型，
+ *    只覆盖有值的字段、无值保留原值；典型映射为 valveState → isOn。
+ *
+ * 【数据流】
+ * 上游：ThingsBoard 设备信息 DTO（DeviceInfoDto）+ 最新遥测键值对
+ *       （Map<String, List<TelemetryItem>>，遥测按 ts 倒序，first 即最新）。
+ * 处理：toDevice() 产出「骨架」Device（类型/在线/所属田块）；applyTelemetry() 叠加实时
+ *       遥测（开关、电池、温度、湿度、流量、水压、故障、土盐/土 pH、最近上报时间）。
+ * 下游：ViewModel 拿填充后的 Device 更新 UI（列表/详情）；lat/lon 供地图层绘制设备点位。
+ */
 // 声明这个文件属于 com.demo.kotlindemo.data.model 包
 package com.demo.kotlindemo.data.model
 

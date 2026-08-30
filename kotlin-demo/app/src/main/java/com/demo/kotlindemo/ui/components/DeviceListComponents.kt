@@ -1,3 +1,28 @@
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * 【文件职责】
+ * 设备域列表/卡片展示组件（从 MainScreen.kt 拆分，设备域高内聚）：
+ *  - DevicesListContent ：整页设备列表（顶部批量操作入口 + 每台设备卡片）
+ *  - DeviceCard         ：单台设备卡片（图标/名称/状态/大开关/更多菜单/数据行）
+ *  - MetricItem         ：阀门数据行的小指标项（瞬时流量/水压/累计用水/电量）
+ *  - AddDeviceDialog    ：新增设备弹窗（名称 + 类型单选）
+ *  - TokenDialog        ：设备接入凭证展示弹窗（accessToken + 一键复制）
+ *  - MountFieldDialog   ：自由设备挂载到田块的弹窗
+ *
+ * 【数据流】
+ * 卡片/弹窗均为无状态或轻状态展示，数据由父层传入，用户操作通过回调上抛：
+ *  - DevicesListContent 的 onToggle/onLongPress/onTimingTask/onBatchClick/
+ *    onHistoryClick/onMount/onUnmount/onRemount/onDelete 分别把对应用户操作上抛，
+ *    isAdmin 控制管理性操作（挂载/删除）是否对员工隐藏。
+ *  - DeviceCard 把具体动作收敛进「更多」下拉菜单，menuExpanded 为卡片内部状态，
+ *    仅负责展开/收起；点击某项后通过回调告知父层并关闭菜单。
+ *  - 弹窗（Add/Token/Mount）只维护表单临时状态（name/type/token），
+ *    把最终值经 onConfirm 交给父层；TokenDialog 由父层拿到 token 后展示，
+ *    用户「复制并关闭」时写入剪贴板。
+ *
+ * 工具函数 deviceIcon/deviceSubtitle/formatReportTime 为纯展示转换，无副作用。
+ * ═══════════════════════════════════════════════════════════════
+ */
 // 包声明：设备列表组件（第三版重构：从 MainScreen.kt 拆出，设备域高内聚）
 package com.demo.kotlindemo.ui.components
 

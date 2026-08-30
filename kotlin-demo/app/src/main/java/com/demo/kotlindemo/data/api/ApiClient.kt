@@ -1,3 +1,7 @@
+/**
+ * 【文件职责】Retrofit 客户端单例：统一构建两个后端 client（tbClient 带 JWT 拦截器，taskClient 无认证），并对外暴露 ThingsBoardApi 与 TaskServiceApi 两个接口对象。
+ * 【数据流】Repository/ViewModel → ApiClient 取接口对象（thingsboard / taskService）→ Retrofit 接口方法 → OkHttp（含 AuthInterceptor/日志）→ HTTP 请求 → Gson 转响应 DTO。
+ */
 package com.demo.kotlindemo.data.api
 
 import okhttp3.OkHttpClient

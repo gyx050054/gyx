@@ -1,0 +1,26 @@
+﻿server:
+  port: 9300
+
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/task_service?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8
+    username: root
+    password: "147258"
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+thingsboard:
+  base-url: http://localhost:8080
+  # 微服务端登录用的租户管理员账号（用于 RPC 下发阀门控制）
+  username: "15079983758@163.com"
+  password: "147258"
+  # SysAdmin 账号（注册建租户用，仅服务端持有）
+  sysadmin-username: sysadmin@thingsboard.org
+  sysadmin-password: "sysadmin"
+  rpc-timeout-ms: 10000
+
+task:
+  scan-interval-ms: 10000

@@ -1,3 +1,26 @@
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * 【文件职责】
+ * 田块地图视图（第三代第一版 §6）：用 WebView 加载本地 assets/map.html
+ * （Leaflet + 高德底图，免费无 key），把田块中心坐标 + 设备点位坐标注入 JS 渲染，
+ * 点击地图上的设备点位通过 JSBridge 回调 onDeviceClick。
+ * 无坐标的设备按田块中心作编号示意分布（FieldCoords.devicePoint），避免多个设备叠在一点。
+ *
+ * 【数据流】
+ *  - 入参：fieldName 地图标题/中心标注；centerLat/centerLon 田块中心（0 视为无坐标，
+ *    退化为 FieldCoords.FALLBACK 默认位置）；devices 该田块下的设备列表；
+ *    onDeviceClick(设备名) 点击回调；modifier 布局修饰符。
+ *  - 注入：buildJson 把设备坐标/类型/开关状态序列化为 JSON 数组，escapeJs 做单引号转义；
+ *    组装成 `window.__inject={...}; if(typeof renderField==='function') renderField(...)`
+ *    的双保险注入，并放在 onPageFinished 之后执行，修复「renderField 未定义 → 白屏」的
+ *    旧问题（update 回调再兜底注入一次，用 isInjected 去重）。
+ *  - JS→Kotlin：map.html 里点击设备点时调 window.JSBridge.onDeviceClick(name)，
+ *    @JavascriptInterface 接收到后由 mainHandler.post 切回主线程，再调用 onDeviceClick。
+ *  - 排障：WebViewClient.onReceivedError / WebChromeClient.onConsoleMessage 捕获
+ *    加载错误与 JS console，异常时 Toast 提示，避免白屏却无法定位。
+ *  本文件仅做展示与坐标注入，不含业务/网络逻辑。
+ * ═══════════════════════════════════════════════════════════════
+ */
 // 声明包名：UI 组件层
 package com.demo.kotlindemo.ui.components
 
@@ -151,6 +174,8 @@ fun FieldMapView(
  *  有坐标的设备用真实坐标；无坐标设备以田块中心为基准按编号示意分布（FieldCoords.devicePoint），避免全叠一点。
  */
 private fun buildJson(devices: List<Device>, centerLat: Double, centerLon: Double): String {
+    // 中心坐标基准：经纬度都为 0 视为「无坐标」→ 退化为默认位置（FieldCoords.FALLBACK），
+    // 作为无坐标设备示意分布的参考点
     val center = if (centerLat == 0.0 && centerLon == 0.0)
         FieldCoords.FALLBACK else (centerLat to centerLon)
     val items = devices.mapIndexed { index, it ->

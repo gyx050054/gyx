@@ -1,3 +1,7 @@
+/**
+ * 【文件职责】智能灌溉系统定时任务调度微服务的启动入口。
+ * 【数据流】Spring Boot 启动 → 自动装配全部 Bean（数据库、ThingsBoard 客户端、定时器）→ @EnableScheduling 让任务/告警/每天任务三个扫描器开始周期轮询。
+ */
 package com.irrigation.task;
 
 import org.springframework.boot.SpringApplication;

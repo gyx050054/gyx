@@ -1,3 +1,22 @@
+/**
+ * TaskViewModel（任务管理 ViewModel）
+ *
+ * 【文件职责】
+ *  - 任务列表 UI 状态、状态排序展示、单条/批量创建任务、删除任务、勾选/全选/一键停止、冲突设备记录。
+ *  - 调用 Repository：TaskRepository（微服务端定时任务调度：loadTasks/createTask/createTasksBatch/deleteTask）+ ThingsBoardRepository（查询并缓存当前租户/公司 id，实现公司间隔离）。
+ *
+ * 【数据流】
+ *  - UI 状态：tasks(mutableStateListOf<TimingTask>)、lastMessage、selectedTaskIds(mutableStateListOf<String> 勾选集合)、
+ *    conflictDeviceName/conflictDeviceId(冲突弹窗)、tenantId(private 缓存)。
+ *  - 加载任务：loadTasks() 先 ensureTenantId() 缓存租户 id，再调 repository.loadTasks(tenantId)，
+ *    按状态优先级（RUNNING>PENDING>COMPLETED>CANCELLED）与开始时间倒序排序后写回 tasks。
+ *  - 建任务：addTask()/addTasksBatch() 调 repository.createTask/createTasksBatch，成功则 loadTasks() 刷新并回调；
+ *    失败（通常为时间冲突）经 onResult 回调让 UI 决定是否弹"清除冲突任务"确认。
+ *  - 删除任务：deleteTask() 先解析本地 "svc_<long>" 中的微服务端 id，调 repository.deleteTask，成功即本地移除（避免列表跳动），失败则 loadTasks() 校正。
+ *  - 勾选/停止：toggleSelect()/selectAllActive()/clearSelection()/preSelectDeviceTasks() 维护 selectedTaskIds；deleteSelected() 逐个调 deleteTask，成功即移除并汇总提示。
+ *  - 冲突记录：setConflict()/clearConflict() 维护冲突设备名与 id，供 UI 弹窗与跳转任务页预勾选。
+ *  - 退出登录：clear() 清空 tasks/selectedTaskIds/conflict/lastMessage/tenantId 并清 TB 缓存，避免切换账号残留。
+ */
 // 声明包名，这个文件属于 ViewModel 层
 package com.demo.kotlindemo.viewmodel
 
@@ -62,6 +81,7 @@ class TaskViewModel : ViewModel() {
      * 同状态按开始时间倒序（新任务在前）
      */
     fun loadTasks() {
+        // 数据流：加载当前租户任务 → 带租户 id 拉取 → 按状态优先级 + 开始时间倒序排序后写回 tasks
         scope.launch {
             try {
                 ensureTenantId()
@@ -89,6 +109,7 @@ class TaskViewModel : ViewModel() {
     fun addTask(deviceId: String, deviceName: String, startTime: Long, endTime: Long,
                 repeatMode: String = "ONCE", dailyHour: Int? = null, durationMinutes: Int? = null,
                 onResult: ((Boolean, String) -> Unit)? = null) {
+        // 数据流：创建单条任务 → 成功后刷新任务列表并回调成功；失败（通常为时间冲突）回调给 UI 决定是否弹"清除冲突"
         scope.launch {
             try {
                 ensureTenantId()
@@ -113,6 +134,7 @@ class TaskViewModel : ViewModel() {
     /** 批量添加定时任务（多选设备）；通过回调返回结果 */
     fun addTasksBatch(deviceIds: List<Pair<String, String>>, startTime: Long, endTime: Long,
                       onResult: ((Boolean, String) -> Unit)? = null) {
+        // 数据流：批量创建任务（多选设备）→ 成功后刷新任务列表并经 onResult 回调 UI
         scope.launch {
             try {
                 ensureTenantId()
@@ -133,6 +155,7 @@ class TaskViewModel : ViewModel() {
 
     /** 删除任务（微服务端处理：未开始直接删 / 已开始发暂停） */
     fun deleteTask(taskId: String) {
+        // 数据流：将本地 "svc_<long>" id 解析为微服务端 id → 调删除接口 → 成功本地移除并提示，失败重新 loadTasks 校正
         // 本地任务 id 存的是 "svc_<long>"，解析出微服务端 id
         val svcId = taskId.removePrefix("svc_").toLongOrNull()
         if (svcId == null) {
@@ -168,12 +191,14 @@ class TaskViewModel : ViewModel() {
 
     /** 勾选/取消勾选单个任务 */
     fun toggleSelect(taskId: String) {
+        // 数据流：单条勾选切换——已勾选则移除，未勾选则加入；仅影响 selectedTaskIds，不发网络请求
         if (taskId in selectedTaskIds) selectedTaskIds.remove(taskId)
         else selectedTaskIds.add(taskId)
     }
 
     /** 全选所有未完成任务（PENDING/RUNNING） */
     fun selectAllActive() {
+        // 数据流：全选所有未完成任务（PENDING/RUNNING），仅勾选可被停止的任务
         selectedTaskIds.clear()
         selectedTaskIds.addAll(
             tasks.filter { it.status == TaskStatus.PENDING || it.status == TaskStatus.RUNNING }
@@ -191,6 +216,7 @@ class TaskViewModel : ViewModel() {
      * @param deviceId 设备 id
      */
     fun preSelectDeviceTasks(deviceId: String) {
+        // 数据流：预勾选指定设备的全部未完成任务，供"冲突清理"弹窗确认后跳任务页自动勾选
         selectedTaskIds.clear()
         selectedTaskIds.addAll(
             tasks.filter {
@@ -202,6 +228,7 @@ class TaskViewModel : ViewModel() {
 
     /** 一键停止所选任务（批量取消；逐个调微服务端取消接口） */
     fun deleteSelected() {
+        // 数据流：批量停止所选任务——逐个调微服务端取消接口（单条失败不中断），成功后移除并汇总提示
         val ids = selectedTaskIds.toList()
         if (ids.isEmpty()) return
         scope.launch {

@@ -1,3 +1,11 @@
+/**
+ * 【文件职责】每天任务的按日执行流水表（task_runs）。"每天任务"本身是常驻模板，本表记录它"某一天到底有没有执行、
+ *           执行结果如何"；taskId + runDate 唯一去重，用于实现"同一天只执行/只记录一次"。
+ * <p>
+ * 【数据流】每日到点由调度器先按 taskId+runDate 查本表去重，未执行则创建 PENDING 流水；开始浇水时写 startTs，
+ *         关浇写 endTs 并置为 COMPLETED；若因预报降雨概率≥80% 被自动跳过则置为 SKIPPED_WEATHER；
+ *         前端据此展示"昨天浇没浇/是否因雨跳过"。
+ */
 package com.irrigation.task.entity;
 
 import jakarta.persistence.*;
@@ -61,30 +69,39 @@ public class TaskRun {
     private Status status = Status.PENDING;
 
     // ---------- getter / setter ----------
+    /** 主键 ID：流水唯一标识（自增） */
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
+    /** 对应 tasks 的 id（闹钟模板） */
     public Long getTaskId() { return taskId; }
     public void setTaskId(Long taskId) { this.taskId = taskId; }
 
+    /** 执行设备 ID */
     public String getDeviceId() { return deviceId; }
     public void setDeviceId(String deviceId) { this.deviceId = deviceId; }
 
+    /** 执行设备名称（冗余，便于展示） */
     public String getDeviceName() { return deviceName; }
     public void setDeviceName(String deviceName) { this.deviceName = deviceName; }
 
+    /** 执行日期（yyyy-MM-dd，当天一条） */
     public String getRunDate() { return runDate; }
     public void setRunDate(String runDate) { this.runDate = runDate; }
 
+    /** 计划/实际开浇时间戳（毫秒） */
     public Long getStartTs() { return startTs; }
     public void setStartTs(Long startTs) { this.startTs = startTs; }
 
+    /** 关浇时间戳（毫秒，可空） */
     public Long getEndTs() { return endTs; }
     public void setEndTs(Long endTs) { this.endTs = endTs; }
 
+    /** 动作 on/off */
     public String getAction() { return action; }
     public void setAction(String action) { this.action = action; }
 
+    /** 流水状态：PENDING/COMPLETED/SKIPPED_WEATHER */
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
 }

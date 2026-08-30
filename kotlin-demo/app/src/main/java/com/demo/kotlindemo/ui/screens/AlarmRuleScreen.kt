@@ -1,3 +1,22 @@
+/**
+ * ============================================================
+ * 【文件职责】
+ * 告警规则管理页（自研告警引擎，第 4 版，仅管理员）。
+ *  - 规则列表：名称、指标、运算符+阈值、级别、启用开关、删除。
+ *  - 「新增」按钮弹 CreateRuleDialog 收集：指标（预设 FilterChip 单排滚动）/ 高于·低于 /
+ *    阈值 / 规则名（可选，留空自动生成）；提交时按预设映射 deviceType、metric、
+ *    operator（gt/lt）、severity（HIGH/MEDIUM）与提示消息。同一条规则会自动推导级别：
+ *    高于=HIGH、低于=MEDIUM。
+ *
+ * 【数据流】
+ * 1) LaunchedEffect(Unit)：进入页面 loadRules() 拉取规则列表。
+ * 2) 展示数据：alarmViewModel.rules / lastMessage。
+ * 3) 用户交互 → AlarmViewModel：
+ *    - 启用开关 toggleRule(id, !enabled) / 删除 deleteRule(id) /
+ *      新增 createRule(name, deviceType, metric, op, threshold, severity, message)。
+ * 4) 运算符显示 operatorText(op)：gt→>  eq→=  ne→≠  其他→<。
+ * 5) 导航回调 onBack 由上层注入。
+ */
 // 声明包名：UI 页面层
 package com.demo.kotlindemo.ui.screens
 

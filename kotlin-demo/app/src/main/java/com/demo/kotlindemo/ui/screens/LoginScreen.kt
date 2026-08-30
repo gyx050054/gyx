@@ -1,3 +1,13 @@
+/**
+ * 【文件职责】LoginScreen —— 登录页（用户唯一登录入口，未登录只能访问此处）。
+ *   对照设计图从上到下：标题 Logo「🌱 智能灌溉 / 田块管理 APP」→ 卡片内账号/密码两个输入框 → 「登录」主按钮 → 注册 / 常见问题入口。
+ *
+ * 【数据流】点「登录」→ loading 置位、清空错误，经 scope.launch 调 ThingsBoardRepository.login(username, password) 走
+ *   POST /api/auth/login 验证并取 JWT；用 AuthRepository.mustChangePassword(email) 查强制改密标记：
+ *   - 需改密 → onNeedChangePassword(email) 跳改密页（首登强制改密）；
+ *   - 无需改密 → onLoginSuccess() 直接进主页。
+ *   异常时写出明确错误提示（需求文档 3.1 账号或密码错误）；loading 用于按钮 Loading/禁用态，loginError 用于卡片内红字提示。
+ */
 // 声明包名，这个文件属于页面层
 package com.demo.kotlindemo.ui.screens
 

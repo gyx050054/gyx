@@ -1,3 +1,25 @@
+/**
+ * ============================================================
+ * 【文件职责】
+ * 田块详情页（点首页田块卡片进入）。展示单块田块：
+ *  - 田块地图（mapMode 可切换地图/列表，第 3 代 §6）；
+ *  - 田块信息卡：名称、作物、面积、总设备数、运行中数、
+ *    批量操作 / 任务管理 / 挂载自由设备（仅管理员）入口；
+ *  - 设备列表（FieldDeviceRow）：图标/名称/状态/开关/历史入口。
+ *  - 维护弹窗状态：开关、批量、定时、挂载自由设备、冲突清理。
+ *
+ * 【数据流】
+ * 1) fieldId 来自路由参数；field = fields.firstOrNull { it.id == fieldId }（remember(fieldId)），
+ *    devices = farmViewModel.devicesInField(fieldId)（不包 remember，跟随数据重组）。
+ * 2) LaunchedEffect(fieldId)：进入先 loadFieldDevices(fieldId)，然后每 10s 轮询
+ *    loadFieldDevices(fieldId)（真实 API 拉该田块 relations→遥测）。
+ * 3) 用户交互 → ViewModel：
+ *    - 开关 toggleDevice / 定时 TimeRangeDialog→taskViewModel.addTask /
+ *      批量 BatchControlDialog→toggleDevice(forceOn)+addTasksBatch；
+ *    - 挂载自由设备 MountDevicesDialog→mountDevice，成功后刷新本田块/全局设备/田块数；
+ *    - 任务冲突：addTask/addTasksBatch 冲突时 setConflict()，弹窗确认后预勾选任务并跳任务管理。
+ * 4) 导航回调 onDeviceHistoryClick / onTaskManageClick / onBack 由上层注入，本页不自行跳转。
+ */
 // 声明包名
 package com.demo.kotlindemo.ui.screens
 

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- =========================================================================
+     📄 res/values/themes.xml
+     作用：XML 主题定义 — 在 App 启动时、还未加载 Compose 之前的"过渡主题"
+           Compose 启动后，界面颜色由 KotlinDemoTheme 接管
+     为什么需要它：
+           AndroidManifest 里引用了 @style/Theme.KotlinDemo，
+           所以这里必须定义一个同名主题，即使里面是空的
+     ========================================================================= -->
+<resources>
+    <style name="Theme.KotlinDemo" parent="android:Theme.Material.Light.NoActionBar">
+        <!--
+            这里不需要写任何属性，因为 Compose 启动后
+            KotlinDemoTheme() 会覆盖所有颜色和样式
+        -->
+    </style>
+</resources>

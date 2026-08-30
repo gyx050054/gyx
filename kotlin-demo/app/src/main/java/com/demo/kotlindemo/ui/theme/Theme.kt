@@ -1,3 +1,14 @@
+/**
+ * 【文件职责】
+ * 主题总开关（Material3）：定义亮色/暗色/动态取色三种配色方案的选择逻辑，
+ * 并通过 KotlinDemoTheme 这个 @Composable 把配色方案和字体应用到整个 UI 树。
+ *
+ * 【数据流】
+ * 输入：darkTheme（默认跟随系统）、dynamicColor（Android 12+ 是否动态取色）。
+ * 决策：优先级为 动态取色 > 暗色静态方案 > 亮色静态方案；动态取色从壁纸提取颜色。
+ * 输出：MaterialTheme(colorScheme, typography) 把主题向下传递，同时用 SideEffect
+ *       同步状态栏颜色（primary）与状态栏文字明暗；所有页面经 MaterialTheme.colorScheme 取色。
+ */
 // =============================================================================
 // 📄 Theme.kt
 // 作用：Compose 主题的"总开关" — 定义亮色/暗色/动态取色的配色方案

@@ -1,3 +1,21 @@
+/**
+ * UserViewModel（成员管理 ViewModel，第三版：替代原"员工管理"）
+ *
+ * 【文件职责】
+ *  - 当前登录身份（TENANT_ADMIN / CUSTOMER_USER）——「我的」页展示；成员列表（家庭成员 CUSTOMER_USER）+ 本公司管理员列表；家庭（客户）列表。
+ *  - 创建成员（管理员=加入本公司 / 使用者=新建或加入已有家庭）、删除成员/管理员/家庭、分配田块/设备可见范围（成员共享）。
+ *  - 调用 Repository：ThingsBoardRepository（身份/成员/家庭/分配/角色）+ TaskRepository（创建成员后登记强制改密）。
+ *
+ * 【数据流】
+ *  - UI 状态：currentUser(mutableStateOf<CurrentUserDto?>)、members(mutableStateListOf<MemberDto>)、admins(mutableStateListOf<CurrentUserDto>)、
+ *    families(mutableStateListOf<CustomerDto>)、isLoading、errorMessage。
+ *  - 加载身份：loadCurrentUser() 调 repository.loadCurrentUser() 写回 currentUser。
+ *  - 加载成员：loadMembers() 一次拉取成员 + 家庭 + 本公司管理员三类数据，分别写回 members/families/admins。
+ *  - 创建/删除：createMember()/deleteAdmin()/deleteMember()/deleteFamily() 调 repository 对应方法，
+ *    成功后 loadMembers() 刷新并经 onResult 回调 UI（失败写 errorMessage）。
+ *  - 分配范围：assignScope() 逐条调 assignAssetToCustomer/assignDeviceToCustomer，任一失败不中断，汇总成败后回调。
+ *  - 退出登录：clear() 清空 members/families/admins/currentUser/errorMessage 并清 TB 缓存，避免切换账号残留。
+ */
 // 包声明：ViewModel 层
 package com.demo.kotlindemo.viewmodel
 
@@ -56,6 +74,7 @@ class UserViewModel : ViewModel() {
 
     /** 加载当前登录用户身份（GET /api/auth/user） */
     fun loadCurrentUser() {
+        // 数据流：查询当前登录者身份 → 写回 currentUser（「我的」页展示角色与归属）
         scope.launch {
             try {
                 currentUser = repository.loadCurrentUser()
@@ -67,6 +86,7 @@ class UserViewModel : ViewModel() {
 
     /** 加载成员列表 + 家庭列表（新增成员下拉用） */
     fun loadMembers() {
+        // 数据流：一次拉取成员/家庭/本公司管理员三类数据 → 分别写回 members/families/admins（先清后填，带错误与 finally 复位）
         scope.launch {
             isLoading = true
             errorMessage = null
@@ -98,6 +118,7 @@ class UserViewModel : ViewModel() {
      */
     fun createMember(role: String, familyId: String?, familyName: String, email: String,
                      onResult: (Boolean, String) -> Unit) {
+        // 数据流：按角色/归属创建成员 → 成功后登记强制改密（失败忽略）→ 刷新成员列表并经 onResult 回调 UI
         scope.launch {
             try {
                 val ok = repository.createMember(role, familyId, familyName.trim(), email.trim())
@@ -117,6 +138,7 @@ class UserViewModel : ViewModel() {
 
     /** 删除管理员账号（第三版：不能删除自己，UI 层已控制） */
     fun deleteAdmin(userId: String, email: String, onResult: (Boolean, String) -> Unit) {
+        // 数据流：删除管理员账号（不能删除自己，UI 层已控制）→ 成功后刷新成员列表并经 onResult 回调
         scope.launch {
             try {
                 if (repository.deleteMember(userId)) {
@@ -133,6 +155,7 @@ class UserViewModel : ViewModel() {
 
     /** 删除成员（只删账号，家庭/设备/其他成员不受影响） */
     fun deleteMember(userId: String, onResult: (Boolean, String) -> Unit) {
+        // 数据流：删除成员账号（仅删账号，家庭/设备/其他成员不受影响）→ 成功后刷新成员列表并经 onResult 回调
         scope.launch {
             try {
                 if (repository.deleteMember(userId)) {
@@ -149,6 +172,7 @@ class UserViewModel : ViewModel() {
 
     /** 删除家庭（删客户，其下成员账号级联删除；田块/设备/任务保留） */
     fun deleteFamily(customerId: String, onResult: (Boolean, String) -> Unit) {
+        // 数据流：删除家庭（客户）→ 其下成员账号级联删除，田块/设备/任务保留 → 成功后刷新成员列表并经 onResult 回调
         scope.launch {
             try {
                 if (repository.deleteCustomer(customerId)) {
@@ -171,6 +195,7 @@ class UserViewModel : ViewModel() {
      */
     fun assignScope(customerId: String, fieldIds: List<String>, deviceIds: List<String>,
                     onResult: (Boolean, String) -> Unit) {
+        // 数据流：勾选后逐条分配田块/设备给员工（任一失败不中断）→ 汇总是否全部成功并经 onResult 回调
         scope.launch {
             var allOk = true
             // 分配田块

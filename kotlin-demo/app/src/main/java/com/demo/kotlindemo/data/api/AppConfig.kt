@@ -1,3 +1,7 @@
+/**
+ * 【文件职责】全局配置常量：集中管理 ThingsBoard 与微服务端地址、轮询间隔、分页大小、遥测 key 列表，消除散落在各文件的硬编码。
+ * 【数据流】各 Repository/ViewModel 直接读取本文件常量 → 作为 Retrofit baseUrl、分页参数、轮询周期、遥测 keys 传入接口调用。
+ */
 // 声明包名：网络层
 package com.demo.kotlindemo.data.api
 
@@ -20,8 +24,10 @@ object AppConfig {
 //    这是本地
 //    const val THINGSBOARD_BASE_URL = "http://192.168.50.140:8080/"
 //    const val TASK_SERVICE_BASE_URL = "http://192.168.50.140:9300/"
-//    这是云端
+//    这是云端（当前生效的线上地址）
+//    ThingsBoard 后端地址（Retrofit baseUrl，需以 / 结尾）
 const val THINGSBOARD_BASE_URL = "http://118.178.238.88:8080/"
+//    微服务端（定时任务/告警）后端地址（Retrofit baseUrl，需以 / 结尾）
     const val TASK_SERVICE_BASE_URL = "http://118.178.238.88:9300/"
 
 

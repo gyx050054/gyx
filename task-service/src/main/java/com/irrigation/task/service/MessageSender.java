@@ -1,3 +1,12 @@
+/**
+ * 【文件职责】
+ * 短信发送抽象接口（统一短信入口）。
+ *  - 定义发送短信契约 send(phone, text)；本版由 LogSmsSender 桩实现（只打日志不真发、不花钱）。
+ *
+ * 【数据流】
+ *  - 上游：业务层（如告警通知）注入 MessageSender 并调用 send(phone, text)。
+ *  - 下游：由具体实现决定 —— 本版 {@link LogSmsSender} 打日志；上线时替换为阿里云/腾讯云短信实现，业务层无感。
+ */
 package com.irrigation.task.service;
 
 /**

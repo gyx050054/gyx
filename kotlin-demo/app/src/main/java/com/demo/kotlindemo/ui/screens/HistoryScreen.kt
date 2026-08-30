@@ -1,3 +1,26 @@
+/**
+ * ============================================================
+ * 【文件职责】
+ * 历史数据页（需求文档 3.4）。按设备类型展示对应遥测曲线：
+ *  - SENSOR（温湿度计）：温度℃、湿度%RH；
+ *  - SOIL_SENSOR（墒情检测器）：盐分 ppm、pH。
+ *  - 两条曲线用 MPAndroidChart 折线图渲染，支持时间范围筛选：
+ *    近 1 小时 / 近 24 小时 / 近 7 天 / 自定义（yyyy-MM-dd HH:mm）。
+ *  - 自定义时间段按跨度自动选择聚合间隔：≤6h→1min、≤48h→5min、更长→1h。
+ *
+ * 【数据流】
+ * 1) repository 是本页直接 new 的 ThingsBoardRepository（非共享 ViewModel），
+ *    scope = rememberCoroutineScope() 用于发起协程。
+ * 2) 时间范围：selectedRange 指示预设下标，ranges[idx] = (标签, 跨度ms, 聚合间隔ms)；
+ *    selectedRange==ranges.size 时为用户自定义（customStart/customEnd 输入）。
+ * 3) 依据设备类型确定两条遥测键：isSoil→soilSalinity/soilPh，否则 temperature/humidity。
+ * 4) loadHistory() 在 scope.launch 内：先算 start/end/interval → repository.loadHistory(
+ *    deviceId, key, start, end, interval) 调 ThingsBoard timeseries 聚合接口，
+ *    按 key 取回 List<TelemetryItem> 存到 tempPoints/humPoints，异常写 error。
+ * 5) LaunchedEffect(selectedRange)：预设下标切换时自动 loadHistory()；自定义由「查询」按钮触发。
+ * 6) LineChartView 把 TelemetryItem 转成 Entry 渲染，横轴用时间格式化器显示月日时分。
+ * 7) 导航回调 onBack 由上层注入。
+ */
 package com.demo.kotlindemo.ui.screens
 
 import android.graphics.Color

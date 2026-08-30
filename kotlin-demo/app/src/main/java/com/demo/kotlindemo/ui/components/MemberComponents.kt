@@ -1,3 +1,20 @@
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * 【文件职责】
+ * 成员域家庭/成员卡片展示组件（从 UserManagementScreen.kt 拆分，成员域高内聚）：
+ *  - FamilyCard：家庭卡片，展示家庭名 + 成员行列表（邮箱/角色徽标/删除按钮）
+ *    以及家庭级操作（分配可见范围 / 删除家庭）。
+ *
+ * 【数据流】
+ * FamilyCard 为纯展示，数据（family、members）由父层传入，用户操作上抛：
+ *  - onAssign()        ：点击「分配可见范围」，父层弹出 AssignScopeDialog
+ *  - onDeleteMember(m) ：点击某成员的删除按钮，父层删除该成员账号
+ *  - onDeleteFamily()  ：点击「删除家庭」，父层删除整个家庭
+ * 内部无状态（无 remember），仅按成员列表逐行渲染当前家庭；
+ * 角色徽标「家庭成员」为纯展示（AssistChip enabled=false，不可点）。
+ * 文件底部的注释指向新增成员弹窗，其实际实现位于 MemberDialogs.kt 的 AddMemberDialog。
+ * ═══════════════════════════════════════════════════════════════
+ */
 // 包声明：成员列表组件（第三版重构：从 UserManagementScreen.kt 拆出，成员域高内聚）
 package com.demo.kotlindemo.ui.components
 

@@ -1,3 +1,21 @@
+/**
+ * FarmViewModel（农田 ViewModel）
+ *
+ * 【文件职责】
+ *  - 统一管理"田块"与"设备"两块 UI 状态：田块列表、设备列表、管理员标志、加载状态与错误提示。
+ *  - 调用 Repository：ThingsBoardRepository（TB REST API：田块/设备/开关 RPC/增删挂载/角色）+ TaskRepository（删除设备前取消其未完成任务）。
+ *  - 设备开关采用"本地乐观更新 + 后台 RPC"，失败仅提示不回滚；设备数据按真实 API 做 10 秒轮询刷新。
+ *
+ * 【数据流】
+ *  - UI 状态：fields(mutableStateListOf<Field>)、devices(mutableStateListOf<Device>)、isAdmin(mutableStateOf<Boolean>)、isLoading、errorMessage。
+ *  - 加载田块：loadFields() 拉取资产列表写回 fields，并顺带刷新管理员标志。
+ *  - 加载设备：loadAllDevices() 拉取全部设备写回 devices（亦是 10 秒轮询 refreshFromApi() 与各增删/挂载后的刷新落点）。
+ *  - 田块过滤：deviceById()/devicesInField() 仅查本地缓存，无网络请求；loadFieldDevices() 从 API 拉取并合并进 devices（按 id 去重）。
+ *  - 开关控制：toggleDevice() 先本地乐观写 isOn/valveState，再发 RPC；非电动阀跳过，失败写 errorMessage。
+ *  - 增删/挂载：createField()/deleteFields()/createDevice()/mountDevice()/unmountDevice()/remountDevice()/deleteDevice()
+ *    调 repository 对应方法，成功后 loadFields()/loadAllDevices() 刷新；删除设备前先取消其未完成任务。
+ *  - 退出登录：logout() 清 token/角色缓存并清空 fields/devices，避免切换账号残留。
+ */
 // 声明包名，这个文件属于 ViewModel 层
 package com.demo.kotlindemo.viewmodel
 
@@ -55,6 +73,7 @@ class FarmViewModel : ViewModel() {
 
     /** 加载田块总览（资产列表 + 设备数） */
     fun loadFields() {
+        // 数据流：加载田块资产列表 → 写回 fields → 顺带刷新管理员标志；无论成败最后都会校正 isAdmin（异常保守为 false）
         scope.launch {
             isLoading = true
             errorMessage = null
@@ -76,6 +95,7 @@ class FarmViewModel : ViewModel() {
 
     /** 加载全部设备（设备页 + 10 秒刷新） */
     fun loadAllDevices() {
+        // 数据流：拉取全部设备 → 写回 devices（先清后填）；亦为 10 秒轮询与各增删/挂载后的刷新落点
         scope.launch {
             try {
                 val list = repository.loadAllDevices()
@@ -101,6 +121,7 @@ class FarmViewModel : ViewModel() {
 
     /** 从 API 加载某个田块下的设备，并合并进 devices 缓存 */
     fun loadFieldDevices(fieldId: String, onLoaded: (List<Device>) -> Unit = {}) {
+        // 数据流：从 API 拉取某田块设备 → 先按同 id 移除旧缓存，再合并进 devices（避免重复 key），结果经 onLoaded 回传
         scope.launch {
             isLoading = true
             errorMessage = null
@@ -124,6 +145,7 @@ class FarmViewModel : ViewModel() {
      * 切换设备开关（电动阀）：先本地乐观更新 UI，再发 RPC 到 TB；失败回滚提示
      */
     fun toggleDevice(id: String, forceOn: Boolean? = null) {
+        // 数据流：先本地乐观更新设备开关（UI 即时反馈）→ 再发 RPC 到 TB；失败仅写 errorMessage，不回滚乐观值
         // 先本地乐观更新
         val idx = devices.indexOfFirst { it.id == id }
         // 目标状态：forceOn 指定则用之，否则取当前状态的相反值
@@ -146,6 +168,7 @@ class FarmViewModel : ViewModel() {
 
     /** 每 10 秒自动刷新（真实 API 轮询） */
     fun refreshFromApi() {
+        // 轮询落点：复用 loadAllDevices() 做全量真 API 刷新（而非本地状态翻转），保证设备状态不漂移
         loadAllDevices()
     }
 
@@ -157,6 +180,7 @@ class FarmViewModel : ViewModel() {
      * @param onResult 回调 (是否成功, 提示信息)
      */
     fun createField(name: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        // 数据流：新增田块（租户管理员）→ 成功后刷新田块列表并经 onResult 回调 UI
         scope.launch {
             try {
                 val ok = repository.createField(name.trim())
@@ -178,6 +202,7 @@ class FarmViewModel : ViewModel() {
      * @param onResult 回调 (是否全部成功, 提示信息)
      */
     fun deleteFields(ids: List<String>, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        // 数据流：逐个删除田块（多选批量，单条失败不中断）→ 汇总成败 → 成功后刷新列表；被删田块下设备变为自由设备
         scope.launch {
             var allOk = true
             for (id in ids) {
@@ -202,6 +227,7 @@ class FarmViewModel : ViewModel() {
      * @param onResult 回调 (是否成功, 提示信息, accessToken?)
      */
     fun createDevice(name: String, type: String, onResult: (Boolean, String, String?) -> Unit) {
+        // 数据流：创建设备（管理员）→ 成功后刷新设备列表，并回传 accessToken 供凭证弹窗展示
         scope.launch {
             try {
                 val token = repository.createDevice(name.trim(), type)
@@ -223,6 +249,7 @@ class FarmViewModel : ViewModel() {
      * @param fieldId  目标田块 ID
      */
     fun mountDevice(deviceId: String, fieldId: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        // 数据流：挂载设备到田块 → 成功后刷新设备（自由→已挂载）与田块设备数
         scope.launch {
             try {
                 val ok = repository.mountDevice(deviceId, fieldId)
@@ -241,6 +268,7 @@ class FarmViewModel : ViewModel() {
      * 取下设备（第三版）：设备从田块取下，变为自由设备
      */
     fun unmountDevice(deviceId: String, fieldId: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        // 数据流：设备从田块取下 → 成功后刷新设备与田块设备数，设备变为自由设备
         scope.launch {
             try {
                 val ok = repository.unmountDevice(deviceId, fieldId)
@@ -260,6 +288,7 @@ class FarmViewModel : ViewModel() {
      */
     fun remountDevice(deviceId: String, oldFieldId: String, newFieldId: String,
                       onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        // 数据流：设备从旧田块取下再挂到新田块（服务端一个接口完成）→ 成功后刷新设备与田块列表
         scope.launch {
             try {
                 val ok = repository.remountDevice(deviceId, oldFieldId, newFieldId)
@@ -279,6 +308,7 @@ class FarmViewModel : ViewModel() {
      * @param deviceId 设备 ID
      */
     fun deleteDevice(deviceId: String, onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        // 数据流：先取消该设备未完成任务（微服务端，失败也继续）→ 删除 TB 设备 → 成功后本地移除并刷新田块
         scope.launch {
             try {
                 // ① 取消该设备所有未完成任务（微服务端 DELETE /api/tasks/device/{deviceId}）

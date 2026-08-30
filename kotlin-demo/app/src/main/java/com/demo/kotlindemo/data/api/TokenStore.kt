@@ -1,3 +1,7 @@
+/**
+ * 【文件职责】JWT 持久化存储：用 SharedPreferences 保存登录 token 与任务页访问标记，解决「杀进程后掉线」问题。
+ * 【数据流】登录成功 → TokenStore.save() 写 token；AuthInterceptor 请求前 TokenStore.load() 读 token；退出登录 → TokenStore.clear()/resetTasksVisited() 清理；App 启动早期 init(context) 注入 context。
+ */
 // 包声明：网络层
 package com.demo.kotlindemo.data.api
 

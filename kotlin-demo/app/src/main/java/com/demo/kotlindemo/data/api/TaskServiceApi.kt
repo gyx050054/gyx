@@ -1,3 +1,7 @@
+/**
+ * 【文件职责】微服务端（定时任务调度 / 认证 / 告警 / 天气）REST 接口定义：以 Retrofit 注解声明全部端点，供 TaskRepository / AlarmRepository / AuthRepository 调用。
+ * 【数据流】Repository → TaskServiceApi 方法（@POST/@GET/@PUT/@DELETE + @Body/@Query/@Path）→ ApiClient 无认证 client → HTTP 请求 → 响应 DTO → 返回给调用方。
+ */
 package com.demo.kotlindemo.data.api
 
 import com.demo.kotlindemo.data.dto.ServiceTask

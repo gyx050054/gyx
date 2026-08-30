@@ -1,3 +1,12 @@
+/**
+ * 【文件职责】ChangePasswordScreen —— 修改密码页（第二版新增：首次登录强制改密）。
+ *   顶部只读展示当前账号（邮箱），用户只需输入「新密码 + 确认」，体验上不需要旧密码 —— 当前密码由 App 代填默认 123456。
+ *
+ * 【数据流】点「确认修改」→ 先本地校验（非空、长度≥6、两次一致，不满足直接写 error 并拦截），再 loading 置位，
+ *   经 scope.launch 调 AuthRepository.changePassword("123456", newPassword) 走 TB 改密；成功后依次：
+ *     markPasswordChanged(email) 清除服务端强制改密标记；reloginAfterPasswordChange(email,newPassword) 用新密码重登拿新 token
+ *     （TB changePassword 会使旧 JWT 失效），最后 onSuccess() 进主界面。失败写 error 提示。
+ */
 // 包声明：页面层
 package com.demo.kotlindemo.ui.screens
 

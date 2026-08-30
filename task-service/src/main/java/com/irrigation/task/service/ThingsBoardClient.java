@@ -1,3 +1,20 @@
+/**
+ * 【文件职责】
+ * ThingsBoard REST 客户端（设备网关实现，租户管理员权限）。
+ *  - 以租户管理员身份登录获取 JWT 并缓存（快过期时自动刷新），支持按租户独立缓存 token（真多租户隔离）；
+ *  - 下发 oneway RPC 指令（开/关/暂停阀门、设备/遥测查询）；
+ *  - 对外供任务/告警业务使用：TaskService / TaskScanScheduler（设备控制下发）与 AlarmService（扫描读设备与遥测）。
+ *
+ * 【数据流】
+ *  - 下游：ThingsBoard REST API（/api/auth/login、/api/rpc/oneway/{deviceId}、
+ *    /api/tenant/deviceInfos、/api/plugins/telemetry/.../values/timeseries）。
+ *  - 上游：业务层传入 deviceId / method / params 或 deviceType / key，
+ *    本类构造 HTTP 请求 → 携带或复用缓存 token → 解析 JSON 响应 →
+ *    返回下发结果（boolean）/ 设备列表（DeviceBrief）/ 遥测最新值（String）。
+ *  - 凭证来源：TenantCredentialRepository（按租户凭证），若无凭证则回退全局默认账号（配置）。
+ *  - token 缓存：volatile 字段 + ConcurrentHashMap（按租户），用 TOKEN_REFRESH_MARGIN_MS 余量提前刷新。
+ *  - 失败降级：RPC 下发失败返回 false；遥测拉取失败返回 null（告警扫描将无遥测按 offline 处理）。
+ */
 package com.irrigation.task.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -58,13 +75,13 @@ public class ThingsBoardClient {
     private final Map<String, Long> tenantTokenExpireAt = new ConcurrentHashMap<>();
 
     public ThingsBoardClient(ThingsBoardProperties props, TenantCredentialRepository tenantCredentialRepository) {
-        this.props = props;
-        this.tenantCredentialRepository = tenantCredentialRepository;
+        this.props = props; // 保存 TB 基础配置（baseUrl/默认账号/超时），供本类所有 HTTP 方法与登录使用
+        this.tenantCredentialRepository = tenantCredentialRepository; // 注入租户凭证查询仓库，供「真多租户」按租户取 TB 账号
         // 连接/读取超时统一从配置读取（原 rpcTimeoutMs 配置为死配置，此处让其真正生效）
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout((int) props.getRpcTimeoutMs());
-        factory.setReadTimeout((int) props.getRpcTimeoutMs());
-        this.rest = RestClient.builder().requestFactory(factory).build();
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory(); // 底层请求工厂：用于设置超时
+        factory.setConnectTimeout((int) props.getRpcTimeoutMs()); // 连接超时 = rpcTimeoutMs（配置）：TCP 建连最长等待
+        factory.setReadTimeout((int) props.getRpcTimeoutMs()); // 读取超时 = rpcTimeoutMs（配置）：响应体到达最长等待
+        this.rest = RestClient.builder().requestFactory(factory).build(); // 用带超时的工厂构建 RestClient 单例，供全程复用
     }
 
     /**
@@ -72,47 +89,47 @@ public class ThingsBoardClient {
      * 优先用该租户自己的 TB 凭证登录（真多租户隔离）；若该租户无凭证则回退到全局默认账号。
      */
     public synchronized String getTokenForTenant(String tenantId) {
-        if (tenantId == null || tenantId.isBlank()) {
-            return getToken();
+        if (tenantId == null || tenantId.isBlank()) { // 租户为空：无多租户语义，直接走全局默认账号
+            return getToken(); // 复用全局 token（全局账号登录后缓存在 token/tokenExpireAt）
         }
-        long expireAt = tenantTokenExpireAt.getOrDefault(tenantId, 0L);
-        String cached = tenantTokens.get(tenantId);
-        if (cached == null || expireAt - TOKEN_REFRESH_MARGIN_MS < Instant.now().toEpochMilli()) {
-            loginAsTenant(tenantId);
+        long expireAt = tenantTokenExpireAt.getOrDefault(tenantId, 0L); // 读该租户缓存的过期时刻；未缓存时默认 0（视为已过期）
+        String cached = tenantTokens.get(tenantId); // 读该租户缓存的有效 token；可能为 null（从未登录过）
+        if (cached == null || expireAt - TOKEN_REFRESH_MARGIN_MS < Instant.now().toEpochMilli()) { // 无缓存或剩余有效期低于刷新余量 → 需（重新）登录
+            loginAsTenant(tenantId); // 用该租户自身凭证登录，并把结果写入租户 token 缓存
         }
-        return tenantTokens.get(tenantId);
+        return tenantTokens.get(tenantId); // 返回该租户缓存中的 token（登录成功后必然已写入）
     }
 
     /** 以指定租户的 TB 账号登录并缓存其 token（凭证来自 tenant_credentials 表） */
     private void loginAsTenant(String tenantId) {
         try {
-            TenantCredential cred = tenantCredentialRepository.findByTenantId(tenantId)
-                    .orElse(null);
+            TenantCredential cred = tenantCredentialRepository.findByTenantId(tenantId) // 按租户 ID 查 TB 登录凭证
+                    .orElse(null); // 未登记则返回 null（不抛异常）
             if (cred == null) {
                 // 该租户未登记凭证：回退到全局默认账号（兼容已有演示数据）
-                String g = getToken();
-                tenantTokens.put(tenantId, g);
-                tenantTokenExpireAt.put(tenantId, tokenExpireAt);
+                String g = getToken(); // 登录全局账号并返回其 token（同时写入全局缓存）
+                tenantTokens.put(tenantId, g); // 把全局 token 存入该租户 token 缓存
+                tenantTokenExpireAt.put(tenantId, tokenExpireAt); // 同步该租户过期时刻为全局 token 的过期时刻
                 return;
             }
-            ObjectNode body = mapper.createObjectNode();
-            body.put("username", cred.getEmail());
-            body.put("password", cred.getPassword());
-            ResponseEntity<JsonNode> resp = postJson(props.getBaseUrl() + "/api/auth/login", null, body, JsonNode.class);
-            JsonNode data = resp.getBody();
-            if (data == null || !data.has("token")) {
+            ObjectNode body = mapper.createObjectNode(); // 构造登录请求体（JSON 对象）
+            body.put("username", cred.getEmail()); // 登录账号 = 该租户凭证的邮箱
+            body.put("password", cred.getPassword()); // 登录密码 = 该租户凭证的密码
+            ResponseEntity<JsonNode> resp = postJson(props.getBaseUrl() + "/api/auth/login", null, body, JsonNode.class); // 匿名 POST 登录接口，返回 JsonNode 响应体
+            JsonNode data = resp.getBody(); // 取出响应体
+            if (data == null || !data.has("token")) { // 响应体为空或缺少 token 字段 → 视为登录异常
                 throw new IllegalStateException("租户 " + tenantId + " 登录响应缺少 token");
             }
-            String t = data.get("token").asText();
-            long expAt = Instant.now().toEpochMilli() + TOKEN_TTL_MS;
-            tenantTokens.put(tenantId, t);
-            tenantTokenExpireAt.put(tenantId, expAt);
+            String t = data.get("token").asText(); // 提取 JWT 字符串
+            long expAt = Instant.now().toEpochMilli() + TOKEN_TTL_MS; // 估算过期时刻 = 当前时刻 + 预设 TTL（90 分钟）
+            tenantTokens.put(tenantId, t); // 写入该租户 token 缓存
+            tenantTokenExpireAt.put(tenantId, expAt); // 写入该租户过期时刻缓存
             log.info("ThingsBoard 租户 {} 登录成功，token 已缓存", cred.getEmail());
         } catch (Exception e) {
             log.warn("租户 {} 登录失败，回退全局账号: {}", tenantId, e.getMessage());
-            String g = getToken();
-            tenantTokens.put(tenantId, g);
-            tenantTokenExpireAt.put(tenantId, tokenExpireAt);
+            String g = getToken(); // 登录失败 → 降级：改用全局默认账号
+            tenantTokens.put(tenantId, g); // 全局 token 落入该租户缓存（保证不返回 null）
+            tenantTokenExpireAt.put(tenantId, tokenExpireAt); // 同步过期时刻为全局 token 的过期时刻
         }
     }
 
@@ -120,10 +137,10 @@ public class ThingsBoardClient {
      * 获取有效 token（线程安全）；token 为空或即将过期时自动重新登录
      */
     public synchronized String getToken() {
-        if (token == null || tokenExpireAt - TOKEN_REFRESH_MARGIN_MS < Instant.now().toEpochMilli()) {
-            login();
+        if (token == null || tokenExpireAt - TOKEN_REFRESH_MARGIN_MS < Instant.now().toEpochMilli()) { // 无 token 或剩余有效期不足刷新余量 → 需重新登录
+            login(); // 登录全局账号并刷新 token/tokenExpireAt
         }
-        return token;
+        return token; // 返回缓存的全局 token
     }
 
     /**
@@ -133,16 +150,16 @@ public class ThingsBoardClient {
      */
     private void login() {
         try {
-            ObjectNode body = mapper.createObjectNode();
-            body.put("username", props.getUsername());
-            body.put("password", props.getPassword());
-            ResponseEntity<JsonNode> resp = postJson(props.getBaseUrl() + "/api/auth/login", null, body, JsonNode.class);
-            JsonNode data = resp.getBody();
-            if (data == null || !data.has("token")) {
+            ObjectNode body = mapper.createObjectNode(); // 构造登录请求体（JSON 对象）
+            body.put("username", props.getUsername()); // 全局默认账号用户名（来自配置）
+            body.put("password", props.getPassword()); // 全局默认账号密码（来自配置）
+            ResponseEntity<JsonNode> resp = postJson(props.getBaseUrl() + "/api/auth/login", null, body, JsonNode.class); // 匿名 POST 登录接口，返回 JsonNode
+            JsonNode data = resp.getBody(); // 取出响应体
+            if (data == null || !data.has("token")) { // 响应体为空或缺少 token 字段 → 登录异常
                 throw new IllegalStateException("登录响应缺少 token");
             }
-            this.token = data.get("token").asText();
-            this.tokenExpireAt = Instant.now().toEpochMilli() + TOKEN_TTL_MS;
+            this.token = data.get("token").asText(); // 缓存 JWT 字符串
+            this.tokenExpireAt = Instant.now().toEpochMilli() + TOKEN_TTL_MS; // 记录过期时刻 = 当前时刻 + TTL
             log.info("ThingsBoard 登录成功，token 已缓存（有效期 {} 分钟）", TOKEN_TTL_MS / 60_000);
         } catch (Exception e) {
             throw new IllegalStateException("ThingsBoard 登录失败: " + e.getMessage(), e);
@@ -159,15 +176,15 @@ public class ThingsBoardClient {
      */
     public boolean sendRpc(String deviceId, String method, JsonNode params) {
         try {
-            ObjectNode body = mapper.createObjectNode();
-            body.put("method", method);
-            body.set("params", params);
-            ResponseEntity<String> resp = postJson(
+            ObjectNode body = mapper.createObjectNode(); // 构造 RPC 请求体（JSON 对象）
+            body.put("method", method); // 写入 RPC 方法名（setValveState/pauseValve/getValveStatus）
+            body.set("params", params); // 写入 RPC 参数对象（如 {"state":true}）
+            ResponseEntity<String> resp = postJson( // POST 到 oneway RPC 端点，携带全局 token
                     props.getBaseUrl() + "/api/rpc/oneway/" + deviceId, getToken(), body, String.class);
-            return resp.getStatusCode().is2xxSuccessful();
+            return resp.getStatusCode().is2xxSuccessful(); // 以 HTTP 状态是否为 2xx 判定下发成功（true=成功）
         } catch (Exception e) {
             log.error("RPC 下发失败 deviceId={} method={}: {}", deviceId, method, e.getMessage());
-            return false;
+            return false; // 任何异常（设备离线/网络/解析错误）→ 下发失败返回 false
         }
     }
 
@@ -175,21 +192,21 @@ public class ThingsBoardClient {
 
     /** 开启阀门（method=setValveState, state=true） */
     public boolean openValve(String deviceId) {
-        ObjectNode p = mapper.createObjectNode();
-        p.put("state", true);
-        return sendRpc(deviceId, "setValveState", p);
+        ObjectNode p = mapper.createObjectNode(); // 构造参数体
+        p.put("state", true); // setValveState 的 state=true（开阀）
+        return sendRpc(deviceId, "setValveState", p); // 复用 sendRpc 下发开启指令并返回结果
     }
 
     /** 关闭阀门（method=setValveState, state=false） */
     public boolean closeValve(String deviceId) {
-        ObjectNode p = mapper.createObjectNode();
-        p.put("state", false);
-        return sendRpc(deviceId, "setValveState", p);
+        ObjectNode p = mapper.createObjectNode(); // 构造参数体
+        p.put("state", false); // setValveState 的 state=false（关阀）
+        return sendRpc(deviceId, "setValveState", p); // 复用 sendRpc 下发关闭指令并返回结果
     }
 
     /** 暂停阀门（method=pauseValve，取消运行中任务时调用） */
     public boolean pauseValve(String deviceId) {
-        return sendRpc(deviceId, "pauseValve", mapper.createObjectNode());
+        return sendRpc(deviceId, "pauseValve", mapper.createObjectNode()); // 无参数，直接下发 pauseValve 指令并返回结果
     }
 
     // ---------- 私有工具：统一 HTTP 构造，消除重复代码 ----------
@@ -204,17 +221,17 @@ public class ThingsBoardClient {
      */
     private <T> ResponseEntity<T> postJson(String url, String token, JsonNode bodyJson, Class<T> respType) {
         // RestClient（Spring 6.1+，官方推荐替代 RestTemplate）：链式构建请求，语义清晰
-        return rest.post()
-                .uri(url)
-                .headers(h -> {
-                    h.setContentType(MediaType.APPLICATION_JSON);
-                    if (token != null) {
-                        h.setBearerAuth(token);
+        return rest.post() // 发起 POST 请求
+                .uri(url) // 目标地址（由 data 流入：登录为 /api/auth/login、下发为 /api/rpc/oneway/...）
+                .headers(h -> { // 设置请求头
+                    h.setContentType(MediaType.APPLICATION_JSON); // Content-Type: application/json
+                    if (token != null) { // 仅当携带 token 时
+                        h.setBearerAuth(token); // 注入 Authorization: Bearer <token>
                     }
                 })
-                .body(bodyJson.toString())
-                .retrieve()
-                .toEntity(respType);
+                .body(bodyJson.toString()) // 请求体：JsonNode 序列化为 JSON 字符串后发送
+                .retrieve() // 由响应提取/解码策略
+                .toEntity(respType); // 反序列化为指定类型并包装成 ResponseEntity
     }
 
     // ---------- 告警引擎数据读取（自研告警引擎用） ----------
@@ -226,15 +243,15 @@ public class ThingsBoardClient {
      * @param respType 响应类型
      */
     private <T> ResponseEntity<T> getJson(String url, String token, Class<T> respType) {
-        return rest.get()
-                .uri(url)
-                .headers(h -> {
-                    if (token != null) {
-                        h.setBearerAuth(token);
+        return rest.get() // 发起 GET 请求
+                .uri(url) // 目标地址（含 query 串，如设备列表/遥测时间序列）
+                .headers(h -> { // 设置请求头
+                    if (token != null) { // 仅当携带 token 时
+                        h.setBearerAuth(token); // 注入 Authorization: Bearer <token>
                     }
                 })
-                .retrieve()
-                .toEntity(respType);
+                .retrieve() // 响应提取策略
+                .toEntity(respType); // 反序列化为指定类型并包装成 ResponseEntity
     }
 
     /** 设备信息（扫描告警时按类型枚举设备用） */
@@ -246,7 +263,7 @@ public class ThingsBoardClient {
      * @return 设备列表（id/name/type）
      */
     public List<DeviceBrief> listDevicesByType(String deviceType) {
-        return listDevicesByType(deviceType, null);
+        return listDevicesByType(deviceType, null); // 未指定租户 → 委托二参版本并用全局默认账号
     }
 
     /**
@@ -256,38 +273,38 @@ public class ThingsBoardClient {
      * @return 设备列表（id/name/type）
      */
     public List<DeviceBrief> listDevicesByType(String deviceType, String tenantId) {
-        List<DeviceBrief> result = new ArrayList<>();
-        int page = 0;
-        int pageSize = 100;
-        String authToken = (tenantId == null || tenantId.isBlank()) ? getToken() : getTokenForTenant(tenantId);
-        while (true) {
-            String q = "pageSize=" + pageSize + "&page=" + page + "&sortProperty=name&sortOrder=ASC";
-            if (deviceType != null && !deviceType.isBlank()) {
-                q += "&type=" + deviceType;
+        List<DeviceBrief> result = new ArrayList<>(); // 结果容器：收集所有页的设备
+        int page = 0; // 当前页码（TB 从 0 开始）
+        int pageSize = 100; // 每页条数（TB 单页上限为 100）
+        String authToken = (tenantId == null || tenantId.isBlank()) ? getToken() : getTokenForTenant(tenantId); // 按租户取 token：无租户走全局账号
+        while (true) { // 分页循环：逐页拉取直到最后一页
+            String q = "pageSize=" + pageSize + "&page=" + page + "&sortProperty=name&sortOrder=ASC"; // 分页+按名称升序排序的查询串
+            if (deviceType != null && !deviceType.isBlank()) { // 指定了设备类型才追加过滤条件
+                q += "&type=" + deviceType; // 追加设备 Profile 类型过滤
             }
-            ResponseEntity<JsonNode> resp = getJson(
+            ResponseEntity<JsonNode> resp = getJson( // GET 租户设备列表接口
                     props.getBaseUrl() + "/api/tenant/deviceInfos?" + q, authToken, JsonNode.class);
-            JsonNode body = resp.getBody();
-            if (body == null) {
+            JsonNode body = resp.getBody(); // 取出响应体
+            if (body == null) { // 响应体为空 → 无法继续分页，直接结束
                 break;
             }
-            JsonNode data = body.get("data");
-            if (data == null || !data.isArray()) {
+            JsonNode data = body.get("data"); // 取 TB 分页结果的 data 数组（当前页设备）
+            if (data == null || !data.isArray()) { // 缺 data 或不是数组 → 视为未取到数据，结束
                 break;
             }
-            for (JsonNode d : data) {
-                result.add(new DeviceBrief(
+            for (JsonNode d : data) { // 遍历当前页每台设备
+                result.add(new DeviceBrief( // 提取 id/name/type 组装为轻量 DTO 后加入结果
                         d.path("id").path("id").asText(),
                         d.path("name").asText(),
                         d.path("type").asText()));
             }
-            int totalPages = body.path("totalPages").asInt(-1);
-            if (totalPages < 0 || page >= totalPages - 1) {
+            int totalPages = body.path("totalPages").asInt(-1); // 读取总页数；字段缺失时默认 -1
+            if (totalPages < 0 || page >= totalPages - 1) { // 无总页数或已到最后一页 → 结束分页
                 break;
             }
-            page++;
+            page++; // 翻到下一页继续循环
         }
-        return result;
+        return result; // 返回聚合后的全部设备列表
     }
 
     /**
@@ -297,7 +314,7 @@ public class ThingsBoardClient {
      * @return 最新值字符串；无数据返回 null
      */
     public String latestTelemetry(String deviceId, String key) {
-        return latestTelemetry(deviceId, key, null);
+        return latestTelemetry(deviceId, key, null); // 未指定租户 → 委托三参版本并用全局默认账号
     }
 
     /**
@@ -309,23 +326,23 @@ public class ThingsBoardClient {
      */
     public String latestTelemetry(String deviceId, String key, String tenantId) {
         try {
-            String authToken = (tenantId == null || tenantId.isBlank()) ? getToken() : getTokenForTenant(tenantId);
-            ResponseEntity<JsonNode> resp = getJson(
+            String authToken = (tenantId == null || tenantId.isBlank()) ? getToken() : getTokenForTenant(tenantId); // 按租户取 token：无租户走全局账号
+            ResponseEntity<JsonNode> resp = getJson( // GET 设备最新遥测时间序列接口
                     props.getBaseUrl() + "/api/plugins/telemetry/DEVICE/" + deviceId
                             + "/values/timeseries?keys=" + key,
                     authToken, JsonNode.class);
-            JsonNode node = resp.getBody();
-            if (node == null || node.isNull()) {
+            JsonNode node = resp.getBody(); // 取出响应体
+            if (node == null || node.isNull()) { // 响应体为空/JSON null → 视为无遥测
                 return null;
             }
-            JsonNode arr = node.get(key);
-            if (arr == null || arr.size() == 0) {
+            JsonNode arr = node.get(key); // 取其 key 对应的时间序列值数组
+            if (arr == null || arr.size() == 0) { // 无该键或数组为空 → 无遥测
                 return null;
             }
-            return arr.get(0).path("value").asText();
+            return arr.get(0).path("value").asText(); // 取最新一条（数组第 0 项）的 value 字符串
         } catch (Exception e) {
             log.warn("拉取遥测失败 deviceId={} key={}: {}", deviceId, key, e.getMessage());
-            return null;
+            return null; // 失败降级：返回 null（告警扫描将无遥测视为 offline/无数据）
         }
     }
 }

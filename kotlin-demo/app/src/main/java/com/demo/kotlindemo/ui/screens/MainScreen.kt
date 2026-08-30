@@ -1,3 +1,34 @@
+/**
+ * ============================================================
+ * 【文件职责】
+ * App 主界面（底部五 Tab：田块 / 设备 / 天气 / 消息 / 我的）。
+ *  - 顶部 TopAppBar 标题随 Tab 切换；右侧操作区包含：
+ *      田块管理（新增/删除多选，仅租户管理员 + 仅田块 Tab 显示）、
+ *      设备新增（仅设备 Tab + 管理员）、告警铃铛（未确认红点数字）、
+ *      任务管理入口（有任务且未访问时红点）、退出登录。
+ *  - 内容区按 currentTab 分派：田块网格 / 设备列表 / 天气 / 消息（告警）/ 我的。
+ *  - 维护本页全部弹窗状态：开关、批量、定时、新增田块、删除确认、
+ *      新增设备、设备凭证、挂载/取下/改挂、删除设备、冲突清理。
+ *  - 数据来自 FarmViewModel / TaskViewModel / AlarmViewModel / UserViewModel，
+ *      导航动作通过回调上抛给上层 NavHost。
+ *
+ * 【数据流】
+ * 1) 进入页面 LaunchedEffect(Unit)：立刻 loadFields() / loadAllDevices() / loadTasks()，
+ *    然后 while(true) 每 10s 轮询 refreshFromApi()（真实 API 拉遥测）+ loadTasks()（同步任务红点）。
+ * 2) 顶栏告警红点 LaunchedEffect(alarmViewModel)：每 15s refreshUnread() 刷新未确认告警数。
+ * 3) 用户交互 → ViewModel：
+ *    - 设备：toggleDevice / 长按 SwitchDialog / 定时 TimeRangeDialog→addTask /
+ *      批量 BatchControlDialog→toggleDevice(forceOn)+addTasksBatch；
+ *    - 田块：createField / 多选 deleteFields；
+ *    - 设备管理：createDevice(成功后 TokenDialog 展示 accessToken) / mountDevice /
+ *      unmountDevice / remountDevice / deleteDevice；
+ *    - 任务冲突：addTask/addTasksBatch 返回冲突时 setConflict()，UI 弹 AlertDialog，
+ *      确认后预勾选该设备任务并跳转 TaskManagementScreen（onTaskManageClick）。
+ * 4) 角色可见性由 farmViewModel.isAdmin 控制（田块/设备管理入口、消息 Tab 规则入口）。
+ * 5) 导航回调（onFieldClick / onTaskManageClick / onDeviceHistoryClick /
+ *      onUserManageClick / onAlarmClick / onManageRules / onLogout）由上层注入，
+ *      本页只负责「触发 ViewModel + 更新状态」，不自行执行导航。
+ */
 // 声明包名，这个文件属于页面层
 package com.demo.kotlindemo.ui.screens
 

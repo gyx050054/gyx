@@ -1,3 +1,7 @@
+/**
+ * 【文件职责】ThingsBoard 数据仓库：封装全部 TB REST 调用（登录、田块/资产、设备、关系、遥测、RPC、用户/客户管理），并把 DTO 转换为 APP 模型（转模型扩展见 data/model 包）。
+ * 【数据流】ViewModel → ThingsBoardRepository 挂起函数 → ApiClient.thingsboard（带 JWT）→ ThingsBoardApi → HTTP → 响应 DTO → 模型转换扩展（toDevice/applyTelemetry）→ UI 模型；身份/角色经缓存（cachedAuthority/cachedCustomerId/cachedTenantId）按角色选择接口。
+ */
 // 声明包名：数据仓库层（ThingsBoard 域）
 package com.demo.kotlindemo.data.api
 
@@ -33,6 +37,7 @@ import kotlinx.coroutines.withContext
  */
 class ThingsBoardRepository {
 
+    /** ThingsBoard API（带 JWT 认证 client，登录/田块/设备/遥测/RPC 均走这里） */
     private val api = ApiClient.thingsboard
 
     /** 登录：成功则缓存 JWT 到 AuthInterceptor 与 TokenStore（后续请求自动携带，重启不掉线） */
@@ -70,7 +75,9 @@ class ThingsBoardRepository {
 
     /** 获取所有田块（资产列表 + 每个田块的设备数）；员工(CUSTOMER_USER)只能看到被分配的 */
     suspend fun loadFields(): List<Field> = withContext(Dispatchers.IO) {
+        // IO 线程池执行网络操作，避免阻塞主线程
         val page = fetchAssetsByRole()
+        // coroutineScope：开启子协程并发查询每个田块的关系，全部完成后返回
         coroutineScope {
             page.map { asset ->
                 async {
@@ -114,8 +121,11 @@ class ThingsBoardRepository {
 
     /** 获取某个田块下的所有设备（关系 → 设备信息 → 最新遥测） */
     suspend fun loadFieldDevices(fieldId: String): List<Device> = withContext(Dispatchers.IO) {
+        // 田块 id → 查询全部出向关系（含设备挂载关系）
         val relations = api.getAssetRelations(fieldId)
+        // 仅保留类型为 DEVICE 的关系，取其目标设备 id 列表
         val deviceIds = relations.filter { it.to.entityType == "DEVICE" }.map { it.to.id }
+        // 并发拉取每个设备的信息与遥测，全部完成后合并返回
         coroutineScope {
             deviceIds.map { id ->
                 async { fetchDeviceWithTelemetry(api.getDevice(id), fieldId) }
@@ -128,10 +138,12 @@ class ThingsBoardRepository {
      * 第二版修复：补全 fieldId（设备所属田块），用于区分「自由设备」与「已挂载设备」
      */
     suspend fun loadAllDevices(): List<Device> = withContext(Dispatchers.IO) {
+        // 分角色取两类设备，合并后全量列表
         val valves = fetchDevicesByRole("VALVE")
         val sensors = fetchDevicesByRole("TEMPERATURE_HUMIDITY")
         // 构建「设备ID → 田块ID」映射（遍历田块 Contains 关系，员工视角只有被分配的田块）
         val fieldIdByDevice = buildFieldIdByDevice()
+        // 并发拉取设备信息 + 最新遥测，并按映射补充所属田块 id
         coroutineScope {
             (valves + sensors).map { info ->
                 async { fetchDeviceWithTelemetry(info, fieldIdByDevice[info.id.id]) }

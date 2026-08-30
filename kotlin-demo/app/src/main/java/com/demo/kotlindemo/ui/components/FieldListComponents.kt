@@ -1,3 +1,22 @@
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * 【文件职责】
+ * 田块域网格/弹窗展示组件（从 MainScreen.kt 拆分，田块域高内聚）：
+ *  - FieldsGridContent ：田块 3 列懒加载网格（顶部提示条 + 田块卡片）
+ *  - FieldCard         ：单块田块卡片（名称/作物/在线圆点/运行设备数）
+ *  - AddFieldDialog    ：新增田块弹窗（输入名称，确认后调 createField）
+ *
+ * 【数据流】
+ * FieldsGridContent 接收田块列表与选择模式，把用户操作上抛：
+ *  - 普通模式：onFieldClick(id) 点击进入田块详情
+ *  - 选择模式：onToggleSelect(id) 切换勾选（用于删除）
+ *  selectionMode/selectedIds 由父层传入，卡片根据 selected 决定是否高亮边框。
+ * FieldCard 为纯展示，onClick 由父层根据 selectionMode 绑定不同逻辑；
+ * 有运行设备(activeCount>0)时卡片用 primaryContainer 色、在线圆点绿色，否则用表面色。
+ * AddFieldDialog 仅维护 name 的输入状态，确认时把「田块名」经 onConfirm 上抛，
+ * 由父层调用 FarmViewModel.createField 完成创建；name 为空时禁止提交。
+ * ═══════════════════════════════════════════════════════════════
+ */
 // 包声明：田块列表组件（第三版重构：从 MainScreen.kt 拆出，田块域高内聚）
 package com.demo.kotlindemo.ui.components
 

@@ -1,3 +1,7 @@
+/**
+ * 【文件职责】认证仓库：编排「注册 → 自动登录 → 强制改密」全链路，收敛对 ThingsBoard（登录/改密）与微服务端（注册/改密标记）两套后端的调用。
+ * 【数据流】入口页/流程页 → AuthRepository 语义化方法 → ApiClient.thingsboard（登录/改密，带 JWT）或 ApiClient.taskService（注册/改密标记，无认证）→ HTTP → 结果写入 AuthInterceptor.token + TokenStore 持久化。
+ */
 // 包声明：网络层
 package com.demo.kotlindemo.data.api
 

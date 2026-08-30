@@ -1,3 +1,11 @@
+/**
+ * 【文件职责】MineScreen —— 「我的」页面（第二版新增，底部导航第三个 Tab）。
+ *   展示当前身份（租户管理员 / 员工，读 TB /api/auth/user 的 authority）与账号邮箱；「成员管理」入口仅租户管理员可见（isAdmin == TENANT_ADMIN）；
+ *   底部「退出登录」按钮。
+ *
+ * 【数据流】进入页面用 LaunchedEffect(Unit) 触发 userViewModel.loadCurrentUser() 拉取当前用户；user = userViewModel.currentUser 驱动邮箱与身份徽标显示，
+ *   isAdmin 由 authority 派生（员工 CUSTOMER_USER 看不到管理入口），控制「成员管理」按钮可见性；点「退出登录」走 onLogout 回登录页。
+ */
 // 包声明：页面层
 package com.demo.kotlindemo.ui.screens
 

@@ -1,3 +1,26 @@
+/**
+ * ============================================================
+ * 【文件职责】
+ * 成员管理页（仅租户管理员，替代原「使用者管理」，对应《成员管理设计方案》3.x）。
+ *  - 公司（本公司）卡片：展示所有管理员（含当前登录者），可删除其他管理员，不能删自己。
+ *  - 家庭（客户）列表：每个家庭一张 FamilyCard，卡片内列出成员（邮箱+角色徽标）。
+ *  - 弹窗：新增成员（角色+归属）、分配可见范围（按家庭勾选田块/设备）、
+ *    删除管理员 / 删除成员（只删账号）/ 删除家庭（级联删成员，设备任务保留）。
+ *
+ * 【数据流】
+ * 1) LaunchedEffect(Unit)：进入页面 loadMembers() 加载成员/家庭/管理员；同时 farmViewModel
+ *    loadFields()/loadAllDevices() 供分配弹窗取列表。
+ * 2) 展示数据：userViewModel.admins / families / members / currentUser / errorMessage。
+ * 3) 用户交互 → UserViewModel：
+ *    - 新增成员 createMember(role, familyId, familyName, email)；
+ *    - 分配范围 assignScope(familyId, fieldIds, deviceIds)；
+ *    - 删除管理员 deleteAdmin(uid, email) / 删除成员 deleteMember(userId) /
+ *      删除家庭 deleteFamily(familyId)；
+ *    - 结果写入 opMessage 用 Snackbar 展示。
+ * 4) 角色可见性：本页整体仅管理员入口（由上层路由控制）；弹窗内「不能删除自己」由
+ *    isMe = admin.id.id == currentUser.id.id 判断。
+ * 5) 导航回调 onBack 由上层注入。
+ */
 // 包声明：页面层
 package com.demo.kotlindemo.ui.screens
 

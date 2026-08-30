@@ -1,3 +1,24 @@
+/**
+ * ============================================================
+ * 【文件职责】
+ * 任务管理页（展示定时任务列表）。任务状态由微服务端维护，APP 只读展示。
+ *  - 顶栏：返回、全选未完成任务、一键停止所选（有勾选时显示数量）。
+ *  - 列表按状态排序（执行中→未开始→已完成/取消）由 ViewModel 提供。
+ *  - 任务卡片 TaskCard：状态底色 + 状态点(仅 PENDING/RUNNING) + 勾选(仅未完成) +
+ *    设备名/每天标注/任务ID/时间范围/状态文字 + 取消按钮(仅未完成)。
+ *  - 空态 EmptyState、操作结果 Snackbar。
+ *
+ * 【数据流】
+ * 1) LaunchedEffect(Unit)：进入页面立即 loadTasks() 拉取任务列表。
+ * 2) 用户交互 → TaskViewModel：
+ *    - 全选 selectAllActive() / 停止所选 deleteSelected() / 卡片勾选 toggleSelect(id) /
+ *      删除 deleteTask(id)；
+ *    - 操作结果写入 lastMessage，LaunchedEffect(lastMessage) 用 SnackbarHostState 展示后
+ *      clearMessage() 清除。
+ * 3) 状态→UI 映射由本文件私有函数完成：statusText(status) 文案、statusColor(status) 文字色、
+ *    StatusDot(status) 状态点、TaskCard 卡片底色。
+ * 4) 导航回调 onBack 由上层注入；冲突清理跳转由入口页的 setConflict 流程触发。
+ */
 // 声明包名，这个文件属于页面层
 package com.demo.kotlindemo.ui.screens
 

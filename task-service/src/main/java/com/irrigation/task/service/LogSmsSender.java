@@ -1,3 +1,13 @@
+/**
+ * 【文件职责】
+ * 短信桩实现（MessageSender 的测试/演示版本）。
+ *  - 仅打印日志，不实际发送短信、不花钱；明确标注「未接入真实短信」，避免被误当已真发。
+ *  - 上线时以真实短信服务替换实现即可，接口不变、业务层无感。
+ *
+ * 【数据流】
+ *  - 上游：业务层调用 MessageSender.send(phone, text) → 落到本实现。
+ *  - 本实现：log.info 记录收件人+内容后返回，无任何外部短信网关调用。
+ */
 package com.irrigation.task.service;
 
 import org.slf4j.Logger;

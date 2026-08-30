@@ -1,3 +1,7 @@
+/**
+ * 【文件职责】绑定 thingsboard.* 配置（baseUrl/账号/密码/SysAdmin/超时），供 RPC 与注册管理等使用。
+ * 【数据流】application.yml 的 thingsboard.* → @ConfigurationProperties 绑定进本 Bean → 注入到 RPC 客户端、RestTemplate、注册/租户管理逻辑。
+ */
 package com.irrigation.task.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;

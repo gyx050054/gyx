@@ -1,3 +1,18 @@
+/**
+ * ============================================================
+ * 【文件职责】
+ * 告警列表页（自研告警引擎，第 4 版）。
+ *  - 展示本租户全部告警：级别色标（HIGH=红/MEDIUM=橙/LOW=黄）、设备、消息、触发时间。
+ *  - 每条状态：RESOLVED=已恢复 / ACKNOWLEDGED=已确认 / 其他=未确认，未确认(ACTIVE)才显示「确认」。
+ *  - 顶栏：刷新 + 规则管理（仅管理员）。
+ *
+ * 【数据流】
+ * 1) LaunchedEffect(Unit)：进入页面 loadAlarms() + loadRules()（规则入口依赖）。
+ * 2) 展示数据：alarmViewModel.alarms / lastMessage / isAdmin。
+ * 3) 用户交互 → AlarmViewModel：刷新 loadAlarms() / 每条确认 ack(alarm.id)（减少未确认计数）/
+ *    规则入口 onManageRules。
+ * 4) 未确认红点由 MainScreen 的 refreshUnread() 维护，本页确认后回传刷新。
+ */
 // 声明包名：UI 页面层
 package com.demo.kotlindemo.ui.screens
 

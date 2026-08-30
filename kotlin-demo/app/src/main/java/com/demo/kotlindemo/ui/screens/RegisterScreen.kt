@@ -1,3 +1,11 @@
+/**
+ * 【文件职责】RegisterScreen —— 注册页（第二版新增）。
+ *   单邮箱输入卡片 + 「注册」按钮 + 已注册返回登录入口；UI 只调 AuthRepository 语义化方法，不感知 TB / 微服务端差异。
+ *
+ * 【数据流】点「注册」→ loading 置位、清空错误，经 scope.launch 调 AuthRepository.register(email)（微服务端 SysAdmin 代建租户 + 租户管理员）；
+ *   成功后自动调 autoLogin(email)（用默认密码 123456 无感登录），再走 onRegisterSuccess(email) 跳转改密页（首登强制改密）；
+ *   任一步失败写 error 提示；loading 用于按钮 Loading/禁用态，email 为状态驱动输入框。
+ */
 // 包声明：页面层
 package com.demo.kotlindemo.ui.screens
 

@@ -1,3 +1,16 @@
+/**
+ * 【文件职责】
+ * 任务执行器接口（为未来铺垫的关键抽象）：真正「执行」一个任务的开启/关闭阀门动作。
+ * 只声明两个动作：
+ *  - executeStart(task)：到点执行「开始」动作（按 action 开/关阀）
+ *  - executeFinish(task)：到期执行「结束」动作（收尾关阀）
+ * 当前默认实现为 RpcTaskExecutor（同步调 ThingsBoard RPC）；未来可替换为线程池异步/消息队列实现，调用方无需改动。
+ *
+ * 【数据流】
+ *  TaskScanScheduler --> TaskExecutor.executeStart / executeFinish(传入 task 对象) --> 具体实现下发 RPC
+ *  executeStart 返回 boolean：true = 执行成功（调度器置 RUNNING）；false = 失败（保留 PENDING 下轮重试）。
+ *  本接口只定义契约、不持有状态；任务的状态流转由 TaskScanScheduler 负责。
+ */
 package com.irrigation.task.service.executor;
 
 import com.irrigation.task.entity.Task;

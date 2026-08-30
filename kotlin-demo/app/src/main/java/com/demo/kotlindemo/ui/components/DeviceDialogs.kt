@@ -1,3 +1,23 @@
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * 【文件职责】
+ * 设备域弹窗集合：所有需要用户二次确认或填写参数的设备操作对话框。
+ *  - SwitchDialog      ：点击设备行「更多」后弹出的设备状态控制确认弹窗
+ *  - TimeRangeDialog   ：单设备添加定时任务，选择开始时间与持续时长
+ *  - BatchControlDialog：勾选多台设备后一键开启/关闭/批量添加定时任务
+ *  - TimingPicker      ：内部复用的「立即/定时 + 持续时长」选择子组件
+ *
+ * 【数据流】
+ * 本文件为纯展示层（无业务/网络逻辑），所有数据由父层经参数传入，
+ * 所有用户操作通过回调上抛给父层，由父层决定后续动作：
+ *  - onDismiss ：关闭/取消，父层仅隐藏弹窗
+ *  - onConfirm ：确认，携带本弹窗内组装好的结果（时间戳/勾选设备等）
+ *  - onTurnOn/onTurnOff/onAddTiming ：批量模式的三个操作上抛
+ *
+ * 时间相关状态（now/startTime/immediate/durationMs/isDaily…）用 remember 保存在
+ * 弹窗内部，仅在用户点「确定」时才把「开始时间+结束时间」等最终值通过回调交给父层。
+ * ═══════════════════════════════════════════════════════════════
+ */
 // 声明包名，这个文件属于 UI 组件层
 package com.demo.kotlindemo.ui.components
 
@@ -83,7 +103,8 @@ fun SwitchDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // 开启/关闭按钮（文字根据当前状态取反）
+                    // 开启/关闭按钮：文字根据当前状态取反；点击后把「切换开关」动作经
+                    // onConfirm 上抛给父层，由父层真正下发设备控制指令
                     Button(
                         onClick = onConfirm,
                         modifier = Modifier.weight(1f)
@@ -92,7 +113,7 @@ fun SwitchDialog(
             }
         },
         confirmButton = {
-            // 底部确认按钮
+            // 底部按钮仅提供退出入口：开关动作由上方按钮经 onConfirm 触发，这里只负责关闭
             TextButton(onClick = onDismiss) { Text("取消") }
         }
     )

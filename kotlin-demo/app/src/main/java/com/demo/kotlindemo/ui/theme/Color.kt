@@ -1,3 +1,15 @@
+/**
+ * 【文件职责】
+ * 颜色常量表：集中定义 APP 的全部颜色值（Material3 紫色主题的调色板）。
+ * 含暗色模式色板（Purple80/PurpleGrey80/Pink80）、亮色模式色板
+ * （Purple40/PurpleGrey40/Pink40）及自定义扩展色（Surface/Primary 的明暗两套）。
+ *
+ * 【数据流】
+ * 定义：在此以 Color(0xFF...) 一次性声明，颜色值唯一来源。
+ * 消费：ui.theme.Theme 中 darkColorScheme()/lightColorScheme() 引用这些常量，
+ *       构造 MaterialTheme 的 colorScheme，进而被所有 Composable 页面经
+ *       MaterialTheme.colorScheme.** 取用；因此改颜色只需改此文件。
+ */
 // =============================================================================
 // 📄 Color.kt
 // 作用：集中管理 App 的所有颜色常量

@@ -1,3 +1,14 @@
+/**
+ * 【文件职责】WeatherContent —— 天气板块（第三代第一版 §4.3，底部第 4 个 Tab）。
+ *   数据来自微服务端天气网关（Open-Meteo）：天气描述、气温（℃）、降水量（mm）、未来 1 小时降雨概率（%）；
+ *   天气不可用降级显示「天气暂不可用」；按田块定位 —— 顶部可选田块，用所选田块坐标查各自天气（第三代 §6.3 坐标）。
+ *
+ * 【数据流】LaunchedEffect(Unit) 先经 ThingsBoardRepository().loadFields() 取田块列表（含坐标）：有田块默认加载第一块，无田块退化默认坐标(28.19,112.93)。
+ *   loadAt(lat,lon) 调 TaskRepository().getWeather(lat,lon) 写入 weather，loading 控制加载态；切换田块 / 点刷新走 loadSelected()。
+ *   渲染按 weather.success 分支：失败显示「天气暂不可用」卡；成功显示主天气卡（城市/描述/气温）+ 数据卡（降水量 / 1h 降雨概率）+ 高概率(≥80%)自动浇水任务跳过提示卡。
+ *
+ * 本文件同时提供两个私有 Composable：[InfoRow]（「标签-值」行）与 [horizontalDivider]（分隔线），供天气卡复用。
+ */
 // 声明包名：UI 页面层
 package com.demo.kotlindemo.ui.screens
 
@@ -26,12 +37,13 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun WeatherContent() {
-    var weather by remember { mutableStateOf<WeatherDto?>(null) }
-    var loading by remember { mutableStateOf(false) }
-    var fields by remember { mutableStateOf<List<Field>>(emptyList()) }
-    var selectedIdx by remember { mutableStateOf(0) }
-    val scope = rememberCoroutineScope()
+    var weather by remember { mutableStateOf<WeatherDto?>(null) }        // 当前查询到的天气数据（null 表示尚未到手）
+    var loading by remember { mutableStateOf(false) }                   // 是否正在请求天气
+    var fields by remember { mutableStateOf<List<Field>>(emptyList()) } // 田块列表（含坐标，用于按田块查天气）
+    var selectedIdx by remember { mutableStateOf(0) }                   // 当前选中的田块下标（联动顶部 FilterChip）
+    val scope = rememberCoroutineScope()                                // 协程作用域：发起天气/田块网络请求
 
+    // 按经纬度加载天气：置 loading，经微服务端天气网关查询，异常时降级为「天气暂不可用」
     fun loadAt(lat: Double, lon: Double) {
         loading = true
         scope.launch {
@@ -44,6 +56,7 @@ fun WeatherContent() {
         }
     }
 
+    // 加载当前选中田块的天气；无田块（越界）时回退默认坐标（长沙岳麓区农田带）
     fun loadSelected() {
         val f = fields.getOrNull(selectedIdx)
         loadAt(f?.lat ?: 28.19, f?.lon ?: 112.93)
@@ -92,12 +105,14 @@ fun WeatherContent() {
         }
         Spacer(Modifier.height(12.dp))
 
+        // 首次加载中：尚未拿到任何天气，居中显示加载圈
         if (loading && weather == null) {
             Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
         } else {
             val w = weather
+            // 天气不可用（失败或未拿到）：显示降级提示卡
             if (w == null || !w.success) {
                 Card(Modifier.fillMaxWidth()) {
                     Text(
@@ -149,6 +164,7 @@ fun WeatherContent() {
     }
 }
 
+// 通用「标签-值」行：标题左对齐占据剩余宽度，数值右对齐加粗，上下留 6dp，供数据卡内的「降水量 / 降雨概率」等条目复用
 @Composable
 private fun InfoRow(label: String, value: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
@@ -157,6 +173,7 @@ private fun InfoRow(label: String, value: String) {
     }
 }
 
+// 自定义分隔线：全宽、0.5dp 细线，上下留 4dp，用于在数据卡内分隔不同数据条目
 @Composable
 private fun horizontalDivider() {
     androidx.compose.material3.HorizontalDivider(
